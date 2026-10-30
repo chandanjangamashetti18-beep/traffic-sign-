@@ -110,3 +110,61 @@ def predict(image_file):
         with torch.no_grad():
             classes = model(inp).cpu().numpy()
         return classes
+
+def generate_gradcam(image_file):
+    """Generates Grad-CAM visual explanation overlay and heatmap for input image."""
+    model = get_model()
+    import cv2
+    import torch
+
+    if isinstance(image_file, (str, os.PathLike)):
+        orig_img = Image.open(image_file).convert('RGB')
+    elif hasattr(image_file, 'read'):
+        image_file.seek(0)
+        orig_img = Image.open(image_file).convert('RGB')
+    elif isinstance(image_file, Image.Image):
+        orig_img = image_file.convert('RGB')
+    else:
+        raise ValueError("Unsupported image type")
+
+    gray_32 = orig_img.convert('L').resize((32, 32))
+    arr = np.array(gray_32, dtype=np.float32) / 255.0
+
+    inp = torch.from_numpy(arr).unsqueeze(0).unsqueeze(0)
+    inp.requires_grad = True
+
+    activations, gradients = [], []
+    def f_hook(m, i, o): activations.append(o)
+    def b_hook(m, gi, go): gradients.append(go[0])
+
+    hf = model.conv3.register_forward_hook(f_hook)
+    hb = model.conv3.register_full_backward_hook(b_hook)
+
+    out = model(inp)
+    pred_idx = out.argmax().item()
+    confidence = float(out[0, pred_idx].item())
+    out[0, pred_idx].backward()
+
+    hf.remove()
+    hb.remove()
+
+    act = activations[0].detach().cpu().numpy()[0]
+    grad = gradients[0].detach().cpu().numpy()[0]
+
+    weights = np.mean(grad, axis=(1, 2))
+    cam = np.zeros(act.shape[1:], dtype=np.float32)
+    for i, w in enumerate(weights):
+        cam += w * act[i]
+
+    cam = np.maximum(cam, 0)
+    cam = cv2.resize(cam, orig_img.size)
+    if cam.max() > cam.min():
+        cam = (cam - cam.min()) / (cam.max() - cam.min() + 1e-8)
+    else:
+        cam = np.zeros_like(cam)
+
+    heatmap_bgr = cv2.applyColorMap(np.uint8(255 * cam), cv2.COLORMAP_JET)
+    heatmap_rgb = cv2.cvtColor(heatmap_bgr, cv2.COLOR_BGR2RGB)
+    overlay = np.uint8(0.55 * np.array(orig_img) + 0.45 * heatmap_rgb)
+
+    return Image.fromarray(overlay), Image.fromarray(heatmap_rgb), pred_idx, confidence

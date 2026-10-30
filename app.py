@@ -8,10 +8,11 @@ import json
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import cv2
 
 # Page Configuration
 st.set_page_config(
-    page_title="AI Traffic Sign Vision | Perception & Analytics",
+    page_title="AI Traffic Sign Vision | Autonomous Perception & Analytics",
     page_icon="🚦",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -150,6 +151,44 @@ st.markdown("""
     .cat-warning { background: rgba(245, 158, 11, 0.2); color: #FCD34D; border: 1px solid rgba(245, 158, 11, 0.4); }
     .cat-prohibitory { background: rgba(244, 63, 94, 0.2); color: #FDA4AF; border: 1px solid rgba(244, 63, 94, 0.4); }
     .cat-mandatory { background: rgba(59, 130, 246, 0.2); color: #93C5FD; border: 1px solid rgba(59, 130, 246, 0.4); }
+
+    /* Advisory Box */
+    .advisory-box {
+        background: rgba(15, 23, 42, 0.8);
+        border: 1px solid rgba(96, 165, 250, 0.25);
+        border-radius: 14px;
+        padding: 1rem 1.2rem;
+        margin-bottom: 1.2rem;
+    }
+
+    .advisory-title {
+        font-size: 0.8rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: #93C5FD;
+        font-weight: 700;
+        margin-bottom: 0.4rem;
+        display: flex;
+        justify-content: space-between;
+    }
+
+    .advisory-text {
+        font-size: 1.05rem;
+        font-weight: 700;
+        color: #F8FAFC;
+    }
+
+    .urgency-pill {
+        padding: 0.2rem 0.6rem;
+        border-radius: 9999px;
+        font-size: 0.75rem;
+        font-weight: 700;
+    }
+
+    .urg-critical { background: rgba(239, 68, 68, 0.3); color: #FCA5A5; border: 1px solid rgba(239, 68, 68, 0.5); }
+    .urg-high { background: rgba(245, 158, 11, 0.3); color: #FCD34D; border: 1px solid rgba(245, 158, 11, 0.5); }
+    .urg-normal { background: rgba(16, 185, 129, 0.3); color: #6EE7B7; border: 1px solid rgba(16, 185, 129, 0.5); }
+    .urg-info { background: rgba(59, 130, 246, 0.3); color: #93C5FD; border: 1px solid rgba(59, 130, 246, 0.5); }
 
     /* Performance Metric Tiles */
     .metric-grid {
@@ -291,6 +330,53 @@ signNames = {
     42: 'End of no passing by vehicles over 3.5 metric tons'
 }
 
+# Autonomous Driving Advisory Action Map
+VEHICLE_ACTIONS = {
+    0: {"action": "Throttle Limited: Max 20 km/h in school/residential area", "urgency": "Normal", "class": "urg-normal", "icon": "🐢"},
+    1: {"action": "Throttle Limited: Maintain 30 km/h cruising target", "urgency": "Normal", "class": "urg-normal", "icon": "🚗"},
+    2: {"action": "Urban Cruising: Set speed limit to 50 km/h", "urgency": "Normal", "class": "urg-normal", "icon": "🚙"},
+    3: {"action": "Arterial Road Target: Set speed to 60 km/h", "urgency": "Normal", "class": "urg-normal", "icon": "🚙"},
+    4: {"action": "Semi-Highway Velocity: Set cruise to 70 km/h", "urgency": "Normal", "class": "urg-normal", "icon": "🏎️"},
+    5: {"action": "Highway Cruising: Maintain 80 km/h cruise target", "urgency": "Normal", "class": "urg-normal", "icon": "🏎️"},
+    6: {"action": "Restrictions Lifted: Resume standard road speed", "urgency": "Info", "class": "urg-info", "icon": "🛣️"},
+    7: {"action": "Expressway Cruising: Set cruise to 100 km/h", "urgency": "Normal", "class": "urg-normal", "icon": "🏎️"},
+    8: {"action": "Maximum Highway Velocity: Set cruise to 120 km/h", "urgency": "Normal", "class": "urg-normal", "icon": "⚡"},
+    9: {"action": "Overtaking Disabled: Lane change maneuver locked", "urgency": "High", "class": "urg-high", "icon": "🚫"},
+    10: {"action": "Commercial vehicle restrictions active", "urgency": "Medium", "class": "urg-normal", "icon": "🚛"},
+    11: {"action": "Cross-Traffic Priority: Prime radar distance check", "urgency": "High", "class": "urg-high", "icon": "⚠️"},
+    12: {"action": "Priority Route Active: Right-of-way confirmed", "urgency": "Normal", "class": "urg-normal", "icon": "⭐"},
+    13: {"action": "Yield Right-of-Way: Decelerate & scan cross-traffic", "urgency": "High", "class": "urg-high", "icon": "🛑"},
+    14: {"action": "Emergency Full Stop: 0 km/h required at stop line", "urgency": "Critical", "class": "urg-critical", "icon": "🛑"},
+    15: {"action": "No Vehicles Allowed: Reroute navigation immediately", "urgency": "Critical", "class": "urg-critical", "icon": "⛔"},
+    16: {"action": "Weight Restriction: Heavy vehicle lane barred", "urgency": "Medium", "class": "urg-normal", "icon": "⚖️"},
+    17: {"action": "Wrong Way Detected: Trigger Emergency Stop & Reverse", "urgency": "Critical", "class": "urg-critical", "icon": "🚨"},
+    18: {"action": "General Hazard Alert: Increase following distance", "urgency": "High", "class": "urg-high", "icon": "⚠️"},
+    19: {"action": "Sharp Left Turn: Reduce velocity by 15 km/h", "urgency": "High", "class": "urg-high", "icon": "↩️"},
+    20: {"action": "Sharp Right Turn: Reduce velocity by 15 km/h", "urgency": "High", "class": "urg-high", "icon": "↪️"},
+    21: {"action": "Double Curve Ahead: Steering stabilization primed", "urgency": "High", "class": "urg-high", "icon": "〰️"},
+    22: {"action": "Uneven Surface: Adaptive suspension softened", "urgency": "Medium", "class": "urg-normal", "icon": "🛞"},
+    23: {"action": "Slippery Road Surface: Traction control maximized", "urgency": "Critical", "class": "urg-critical", "icon": "❄️"},
+    24: {"action": "Road Narrows Right: Merge left safely", "urgency": "High", "class": "urg-high", "icon": "⬅️"},
+    25: {"action": "Road Construction: Speed capped at 30 km/h", "urgency": "High", "class": "urg-high", "icon": "🚧"},
+    26: {"action": "Traffic Signals Ahead: Optical light detection active", "urgency": "High", "class": "urg-high", "icon": "🚦"},
+    27: {"action": "Pedestrian Hazard: Automated emergency braking on standby", "urgency": "Critical", "class": "urg-critical", "icon": "🚶"},
+    28: {"action": "School Zone: Speed capped at 25 km/h; scan sidewalks", "urgency": "Critical", "class": "urg-critical", "icon": "🚸"},
+    29: {"action": "Cyclists Expected: Maintain 1.5m lateral safety margin", "urgency": "High", "class": "urg-high", "icon": "🚲"},
+    30: {"action": "Ice & Snow Alert: ABS & anti-skid systems engaged", "urgency": "Critical", "class": "urg-critical", "icon": "🧊"},
+    31: {"action": "Wildlife Crossing: Thermal IR scanner active; high beam ready", "urgency": "High", "class": "urg-high", "icon": "🦌"},
+    32: {"action": "End of Speed Limits: Driver/default choice restored", "urgency": "Info", "class": "urg-info", "icon": "🏁"},
+    33: {"action": "Mandatory Turn Right: Signal right indicator", "urgency": "Medium", "class": "urg-normal", "icon": "➡️"},
+    34: {"action": "Mandatory Turn Left: Signal left indicator", "urgency": "Medium", "class": "urg-normal", "icon": "⬅️"},
+    35: {"action": "Ahead Only: Turn maneuvers disabled", "urgency": "Medium", "class": "urg-normal", "icon": "⬆️"},
+    36: {"action": "Route Options: Proceed straight or right only", "urgency": "Normal", "class": "urg-normal", "icon": "↗️"},
+    37: {"action": "Route Options: Proceed straight or left only", "urgency": "Normal", "class": "urg-normal", "icon": "↖️"},
+    38: {"action": "Obstacle Warning: Steer and keep to the right", "urgency": "High", "class": "urg-high", "icon": "👉"},
+    39: {"action": "Obstacle Warning: Steer and keep to the left", "urgency": "High", "class": "urg-high", "icon": "👈"},
+    40: {"action": "Entering Roundabout: Yield to existing traffic", "urgency": "High", "class": "urg-high", "icon": "🔄"},
+    41: {"action": "Passing Restrictions Ended: Lane change permitted", "urgency": "Normal", "class": "urg-normal", "icon": "✅"},
+    42: {"action": "Heavy Vehicle Passing Restrictions Ended", "urgency": "Normal", "class": "urg-normal", "icon": "✅"}
+}
+
 def get_sign_category(class_id):
     if class_id in [0, 1, 2, 3, 4, 5, 6, 7, 8, 32]:
         return "Speed Limit", "cat-speed", "⚡"
@@ -307,6 +393,7 @@ def get_sign_category(class_id):
 with st.sidebar:
     st.markdown("### 🎛️ Vision Control Panel")
     top_k = st.slider("Top Predictions Display", min_value=1, max_value=5, value=3)
+    enable_voice = st.checkbox("🔊 Enable Voice Audio Alerts", value=True)
     
     st.divider()
     st.markdown("#### 📈 Benchmark Overview")
@@ -322,13 +409,12 @@ with st.sidebar:
     col_s2.metric("F1-Score", f"{ov_f1:.1f}%")
     
     st.divider()
-    st.markdown("#### 🧠 Model Specifications")
+    st.markdown("#### 🧠 Autonomous System Features")
     st.markdown("""
-    - **Architecture**: 3-Stage CNN + Dense
-    - **Dataset**: GTSRB Benchmark
-    - **Training Set**: 34,799 Samples
-    - **Classes**: 43 Road Sign Types
-    - **Epochs Run**: 40 Epochs
+    - **Voice Alerts**: Audio synthesis in browser
+    - **Autonomous Action**: Driving advisory per sign
+    - **Grad-CAM**: Explainable AI thermal maps
+    - **Weather Lab**: Rain, darkness, and blur testing
     """)
 
 # Hero Banner
@@ -336,18 +422,19 @@ st.markdown("""
 <div class="hero-container">
     <div class="hero-title">🚦 Autonomous Traffic Sign Vision</div>
     <div class="hero-subtitle">
-        Deep convolutional perception system trained on the German Traffic Sign Recognition Benchmark (GTSRB). Includes real-time perception, confusion matrix diagnostics, dataset distribution, and training curves.
+        Deep convolutional perception system trained on the German Traffic Sign Recognition Benchmark (GTSRB). Featuring real-time classification, voice audio warnings, autonomous vehicle action advisories, Grad-CAM explainable AI, and weather robustness simulation.
     </div>
     <div class="badge-bar">
         <span class="metric-chip"><span class="chip-dot"></span> System: Active</span>
-        <span class="metric-chip">🎯 43 Classes Covered</span>
-        <span class="metric-chip">📈 Data Visualizations Active</span>
-        <span class="metric-chip">🔄 Confusion Matrix Active</span>
+        <span class="metric-chip">🔊 Voice Alerts Ready</span>
+        <span class="metric-chip">🚗 Driving Advisory Active</span>
+        <span class="metric-chip">🔍 Grad-CAM Explainability</span>
+        <span class="metric-chip">🌧️ Weather Simulation Lab</span>
     </div>
 </div>
 """, unsafe_allow_html=True)
 
-# Helper function to display prediction card with Accuracy, Precision, Recall & Confusion Matrix
+# Helper function to display prediction card with Accuracy, Precision, Recall, Confusion Matrix & Driving Advisory
 def render_results(img_source):
     with st.spinner("🧠 Analyzing image with neural perception..."):
         probs = classify.predict(img_source)[0]
@@ -355,6 +442,7 @@ def render_results(img_source):
         top_class = top_indices[0]
         top_conf = probs[top_class] * 100
         cat_name, cat_class, cat_icon = get_sign_category(top_class)
+        adv = VEHICLE_ACTIONS.get(top_class, {"action": "Maintain vigilant cruising", "urgency": "Normal", "class": "urg-normal", "icon": "🚗"})
         
         # Benchmark metrics
         cls_info = METRICS_DATA.get(str(top_class), {})
@@ -370,12 +458,36 @@ def render_results(img_source):
         top_conf_cls = cm_info.get('top_confused_class')
         top_conf_count = cm_info.get('top_confused_count', 0)
         
+        # Speech synthesis script
+        speech_text = f"Notice: {signNames[top_class]}. {adv['action']}"
+        voice_html = f"""
+        <script>
+        if ('speechSynthesis' in window) {{
+            window.speechSynthesis.cancel();
+            let u = new SpeechSynthesisUtterance("{speech_text}");
+            u.rate = 1.0;
+            window.speechSynthesis.speak(u);
+        }}
+        </script>
+        """ if enable_voice else ""
+        
+        st.components.v1.html(voice_html, height=0)
+        
         # Result Header Card
         st.markdown(f"""
         <div class="prediction-card">
-            <div class="pred-header">Top Recognized Sign</div>
+            <div class="pred-header">Top Recognized Road Sign</div>
             <div class="pred-name">{cat_icon} {signNames[top_class]}</div>
             <div class="pred-category {cat_class}">{cat_name}</div>
+            
+            <!-- Autonomous Vehicle Driving Advisory Box -->
+            <div class="advisory-box">
+                <div class="advisory-title">
+                    <span>🚗 Autonomous Vehicle Action Advisory</span>
+                    <span class="urgency-pill {adv['class']}">{adv['urgency'].upper()} PRIORITY</span>
+                </div>
+                <div class="advisory-text">{adv['icon']} {adv['action']}</div>
+            </div>
             
             <!-- Metrics Row (Accuracy/Confidence, Precision, Recall, F1) -->
             <div class="metric-grid">
@@ -427,12 +539,32 @@ def render_results(img_source):
             st.progress(float(val))
             
         st.markdown("</div>", unsafe_allow_html=True)
+        
+        # Audio repeat button & Diagnostic Export
+        col_act1, col_act2 = st.columns([1, 1])
+        with col_act1:
+            if st.button("🔊 Re-play Voice Audio Alert", key=f"speak_{np.random.randint(10000)}"):
+                st.components.v1.html(f"""
+                <script>
+                if ('speechSynthesis' in window) {{
+                    window.speechSynthesis.cancel();
+                    let u = new SpeechSynthesisUtterance("{speech_text}");
+                    u.rate = 1.0;
+                    window.speechSynthesis.speak(u);
+                }}
+                </script>
+                """, height=0)
+        with col_act2:
+            report_str = f"Sign: {signNames[top_class]}\nConfidence: {top_conf:.2f}%\nPrecision: {cls_prec:.2f}%\nRecall: {cls_rec:.2f}%\nAdvisory: {adv['action']}\n"
+            st.download_button("📄 Download Detection Log (TXT)", report_str, file_name=f"sign_detection_{top_class}.txt")
 
-# Navigation Tabs
-tab_upload, tab_camera, tab_gallery, tab_metrics, tab_viz = st.tabs([
+# Navigation Tabs (7 Comprehensive Tabs)
+tab_upload, tab_camera, tab_gallery, tab_gradcam, tab_weather, tab_metrics, tab_viz = st.tabs([
     "📁 Upload Image",
     "📸 Live Camera AI",
     "🖼️ Sign Preset Gallery",
+    "🔍 Explainable AI (Grad-CAM)",
+    "🌧️ Weather Simulation Lab",
     "📊 Confusion Matrix & Benchmark",
     "📈 Data Visualizations"
 ])
@@ -453,13 +585,13 @@ with tab_upload:
         if uploaded_file is not None and ('classify_btn' in locals() and classify_btn):
             render_results(uploaded_file)
         elif uploaded_file is not None:
-            st.info("👈 Click **Analyze Traffic Sign** to inspect accuracy, precision, recall, and confusion matrix.")
+            st.info("👈 Click **Analyze Traffic Sign** to inspect perception, advisory, and metrics.")
         else:
             st.markdown("""
             <div class="glass-card" style="text-align: center; padding: 3rem 1rem;">
                 <div style="font-size: 3rem; margin-bottom: 0.5rem;">📸</div>
                 <h4 style="color: #94A3B8;">Awaiting Image Upload</h4>
-                <p style="color: #64748B; font-size: 0.9rem;">Upload a file on the left to see neural classification and confusion matrix metrics here.</p>
+                <p style="color: #64748B; font-size: 0.9rem;">Upload a file on the left to see neural classification and driving action advisory here.</p>
             </div>
             """, unsafe_allow_html=True)
 
@@ -508,10 +640,151 @@ with tab_gallery:
             if selected_sample and ('sample_btn' in locals() and sample_btn):
                 render_results(sample_path)
             elif selected_sample:
-                st.info("👈 Click **Run Preset Benchmark** to view confusion matrix diagnostics.")
+                st.info("👈 Click **Run Preset Benchmark** to view driving advisory and metrics.")
     else:
         st.warning("Sample presets directory not found.")
 
+# ----------------- TAB: EXPLAINABLE AI (GRAD-CAM) -----------------
+with tab_gradcam:
+    st.markdown("### 🔍 Explainable AI: Neural Grad-CAM Saliency Maps")
+    st.write("Grad-CAM (Gradient-weighted Class Activation Mapping) visually exposes **where** the CNN looks inside the image to identify the sign.")
+    
+    sample_dir = os.path.join(os.path.dirname(__file__), 'sample_signs')
+    if not os.path.exists(sample_dir):
+        sample_dir = os.path.join(os.path.dirname(__file__), 'Traffic_Sign_Classifier-with-Streamlit-master', 'Test Random Images')
+        
+    g_col1, g_col2 = st.columns([1, 2], gap="large")
+    with g_col1:
+        st.markdown("#### 🖼️ Select Image for Heatmap")
+        cam_img_source = st.radio("Image Source:", ["Preset Sample Sign", "Upload Custom Sign"], horizontal=True)
+        target_img_path = None
+        
+        if cam_img_source == "Preset Sample Sign" and os.path.exists(sample_dir):
+            sample_files = sorted(glob.glob(os.path.join(sample_dir, "*.jpg")))
+            sample_names = [os.path.basename(f) for f in sample_files]
+            chosen_name = st.selectbox("Choose sample sign:", sample_names, index=sample_names.index("stop.jpg") if "stop.jpg" in sample_names else 0, key="grad_preset")
+            target_img_path = os.path.join(sample_dir, chosen_name)
+            st.image(Image.open(target_img_path), caption="Target Sign", use_container_width=True)
+        elif cam_img_source == "Upload Custom Sign":
+            custom_up = st.file_uploader("Upload image for Grad-CAM", type=["jpg", "png", "jpeg"], key="grad_up")
+            if custom_up:
+                target_img_path = custom_up
+                st.image(Image.open(custom_up), caption="Uploaded Sign", use_container_width=True)
+                
+        run_grad_btn = st.button("🔥 Compute Grad-CAM Saliency Map", type="primary", use_container_width=True)
+        
+    with g_col2:
+        if target_img_path and run_grad_btn:
+            with st.spinner("Extracting layer gradients & computing activation heatmap..."):
+                overlay_img, heatmap_img, pred_id, conf = classify.generate_gradcam(target_img_path)
+                
+                st.success(f"**Identified:** {signNames[pred_id]} ({conf*100:.1f}% Confidence)")
+                
+                gc_col1, gc_col2, gc_col3 = st.columns(3)
+                with gc_col1:
+                    st.image(Image.open(target_img_path), caption="1. Input Sign", use_container_width=True)
+                with gc_col2:
+                    st.image(heatmap_img, caption="2. Conv3 Thermal Heatmap", use_container_width=True)
+                with gc_col3:
+                    st.image(overlay_img, caption="3. Grad-CAM Overlay", use_container_width=True)
+                    
+                st.markdown("""
+                <div class="glass-card" style="margin-top: 1rem;">
+                    <h5 style="color: #93C5FD; margin-bottom: 0.4rem;">💡 Neural Attention Interpretation:</h5>
+                    <p style="color: #CBD5E1; font-size: 0.9rem; line-height: 1.5;">
+                        The warm <strong>red/yellow regions</strong> indicate the exact pixels that generated the highest gradient activations in the final convolutional layer (<code>Conv2D_2</code>, 68 filters). Notice how the network locks onto distinctive internal symbols, numbers, and border geometries.
+                    </p>
+                </div>
+                """, unsafe_allow_html=True)
+        else:
+            st.info("👈 Select a sign and click **Compute Grad-CAM Saliency Map** to visualize neural attention.")
+
+# ----------------- TAB: WEATHER SIMULATION LAB -----------------
+with tab_weather:
+    st.markdown("### 🌧️ Weather & Road Simulation Lab (Adversarial Robustness)")
+    st.write("Test whether the autonomous perception model can withstand harsh real-world environmental disruptions.")
+    
+    sample_dir = os.path.join(os.path.dirname(__file__), 'sample_signs')
+    if not os.path.exists(sample_dir):
+        sample_dir = os.path.join(os.path.dirname(__file__), 'Traffic_Sign_Classifier-with-Streamlit-master', 'Test Random Images')
+        
+    w_col_ctrl, w_col_sim = st.columns([1, 2], gap="large")
+    
+    with w_col_ctrl:
+        st.markdown("#### 🎚️ Environmental Controls")
+        if os.path.exists(sample_dir):
+            sample_files = sorted(glob.glob(os.path.join(sample_dir, "*.jpg")))
+            sample_names = [os.path.basename(f) for f in sample_files]
+            w_choice = st.selectbox("Base Sign Image:", sample_names, index=sample_names.index("speed_limit_50.jpg") if "speed_limit_50.jpg" in sample_names else 0, key="w_select")
+            w_base_path = os.path.join(sample_dir, w_choice)
+        else:
+            w_base_path = None
+            
+        fog_val = st.slider("🌧️ Rain / Fog Density", 0, 100, 0, step=5)
+        night_val = st.slider("🌙 Night / Low Light Darkness", 0, 90, 0, step=5)
+        blur_val = st.slider("🏎️ High-Speed Motion Blur", 0, 15, 0, step=1)
+        glare_val = st.slider("☀️ Direct Sun Glare", 0, 100, 0, step=5)
+        
+    with w_col_sim:
+        if w_base_path:
+            orig_img = Image.open(w_base_path).convert('RGB')
+            arr = np.array(orig_img, dtype=np.float32)
+            
+            # Apply Darkness / Night
+            if night_val > 0:
+                factor = (100 - night_val) / 100.0
+                arr = arr * factor
+                
+            # Apply Rain / Fog
+            if fog_val > 0:
+                fog_alpha = fog_val / 150.0
+                arr = (1 - fog_alpha) * arr + fog_alpha * 220
+                
+            # Apply Glare
+            if glare_val > 0:
+                glare_alpha = glare_val / 180.0
+                arr = np.clip(arr + glare_alpha * 255, 0, 255)
+                
+            arr = np.clip(arr, 0, 255).astype(np.uint8)
+            
+            # Apply Motion Blur
+            if blur_val > 1:
+                ksize = blur_val if blur_val % 2 == 1 else blur_val + 1
+                kernel = np.zeros((ksize, ksize))
+                kernel[int((ksize-1)/2), :] = np.ones(ksize) / ksize
+                arr = cv2.filter2D(arr, -1, kernel)
+                
+            degraded_img = Image.fromarray(arr)
+            
+            # Predict both
+            orig_probs = classify.predict(w_base_path)[0]
+            orig_class = int(np.argmax(orig_probs))
+            orig_conf = float(orig_probs[orig_class] * 100)
+            
+            deg_probs = classify.predict(degraded_img)[0]
+            deg_class = int(np.argmax(deg_probs))
+            deg_conf = float(deg_probs[deg_class] * 100)
+            
+            sim_col1, sim_col2 = st.columns(2)
+            with sim_col1:
+                st.markdown("##### ☀️ Clean Environment")
+                st.image(orig_img, use_container_width=True)
+                st.success(f"**{signNames[orig_class]}** ({orig_conf:.1f}%)")
+                
+            with sim_col2:
+                st.markdown("##### 🌧️ Degraded Road Conditions")
+                st.image(degraded_img, use_container_width=True)
+                if deg_class == orig_class:
+                    st.success(f"**{signNames[deg_class]}** ({deg_conf:.1f}%)")
+                    st.markdown("🛡️ **Perception Status:** `ROBUST (Correct identification despite harsh weather)`")
+                else:
+                    st.error(f"**Misidentified:** {signNames[deg_class]} ({deg_conf:.1f}%)")
+                    st.markdown("⚠️ **Perception Status:** `FAILED (Adverse weather induced misclassification)`")
+                    
+            conf_delta = deg_conf - orig_conf if deg_class == orig_class else -orig_conf
+            st.metric("Model Confidence Impact", f"{deg_conf:.1f}%", delta=f"{conf_delta:.1f}%")
+
+# ----------------- TAB: CONFUSION MATRIX & BENCHMARK -----------------
 with tab_metrics:
     st.markdown("### 📊 Comprehensive Performance & Confusion Matrix Benchmark")
     st.write("Calculated on the official German Traffic Sign Recognition Benchmark (GTSRB) test dataset (4,410 test samples):")
@@ -524,7 +797,6 @@ with tab_metrics:
     
     st.divider()
     
-    # Side-by-side columns: Benchmark Table (with Confusion Matrix Columns) + Interactive CM Explorer
     col_tab1, col_tab2 = st.columns([3, 2], gap="large")
     
     with col_tab1:
@@ -589,7 +861,6 @@ with tab_metrics:
             </div>
             """, unsafe_allow_html=True)
             
-            # Show top confusion destinations as a clean bar chart
             confused_indices = np.argsort(row)[::-1]
             top_dest = [idx for idx in confused_indices if row[idx] > 0][:5]
             
@@ -638,12 +909,11 @@ with tab_metrics:
             )
             st.plotly_chart(fig_heatmap, use_container_width=True)
 
-# ----------------- NEW TAB: DATA VISUALIZATIONS -----------------
+# ----------------- TAB: DATA VISUALIZATIONS -----------------
 with tab_viz:
     st.markdown("### 📈 Dataset Distribution & Training Performance Visualizations")
     st.write("Explore dataset class balance and epoch-by-epoch training convergence.")
     
-    # Visualization 1: Class Distribution (number of images vs traffic signs classes)
     st.markdown("---")
     st.markdown("## Class Distribution")
     st.markdown("##### *Number of images vs traffic signs classes*")
@@ -670,7 +940,6 @@ with tab_viz:
         })
     df_dist = pd.DataFrame(dist_rows)
     
-    # Summary Metrics Cards
     c1, c2, c3, c4 = st.columns(4)
     total_imgs = df_dist["Number of Images"].sum()
     max_cls = df_dist.loc[df_dist["Number of Images"].idxmax()]
@@ -682,7 +951,6 @@ with tab_viz:
     c3.metric("Highest Represented", f"{max_cls['Number of Images']:,}", help=f"{max_cls['Sign Name']}")
     c4.metric("Lowest Represented", f"{min_cls['Number of Images']:,}", help=f"{min_cls['Sign Name']}")
     
-    # Plotly Bar Chart: Number of images vs traffic signs classes
     fig_dist = px.bar(
         df_dist,
         x="Class Label",
@@ -717,7 +985,6 @@ with tab_viz:
     )
     st.plotly_chart(fig_dist, use_container_width=True)
     
-    # Visualization 2: Training vs Validation Accuracy (accuracy vs epochs)
     st.markdown("---")
     st.markdown("## Training vs Validation Accuracy")
     st.markdown("##### *Accuracy vs Epochs*")
@@ -726,17 +993,14 @@ with tab_viz:
     train_acc = [v * 100 for v in TRAIN_META.get('train_acc', [])]
     val_acc = [v * 100 for v in TRAIN_META.get('val_acc', [])]
     
-    # Metrics Banner
     e1, e2, e3, e4 = st.columns(4)
     e1.metric("Total Epochs", f"{len(epochs)}")
     e2.metric("Final Training Accuracy", f"{train_acc[-1]:.2f}%" if train_acc else "89.42%")
     e3.metric("Peak Validation Accuracy", f"{max(val_acc):.2f}%" if val_acc else "71.88%")
     e4.metric("Convergence Epoch", "Epoch 36 - 40", help="Model checkpoint saved at maximum validation accuracy")
     
-    # Plotly Line Chart: Training vs Validation Accuracy
     fig_acc = go.Figure()
     
-    # Training Accuracy Line
     fig_acc.add_trace(go.Scatter(
         x=epochs,
         y=train_acc,
@@ -747,7 +1011,6 @@ with tab_viz:
         hovertemplate="Epoch %{x}<br>Training Accuracy: <b>%{y:.2f}%</b><extra></extra>"
     ))
     
-    # Validation Accuracy Line
     fig_acc.add_trace(go.Scatter(
         x=epochs,
         y=val_acc,
@@ -758,7 +1021,6 @@ with tab_viz:
         hovertemplate="Epoch %{x}<br>Validation Accuracy: <b>%{y:.2f}%</b><extra></extra>"
     ))
     
-    # Best Model Checkpoint Annotation / Reference
     if val_acc:
         best_epoch = int(np.argmax(val_acc)) + 1
         best_val = max(val_acc)
