@@ -8,11 +8,12 @@ import json
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import pydeck as pdk
 import cv2
 
 # Page Configuration
 st.set_page_config(
-    page_title="AI Traffic Sign Vision | Autonomous Perception & Analytics",
+    page_title="AI Traffic Sign Vision | Autonomous Perception & GPS Simulator",
     page_icon="🚦",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -280,6 +281,15 @@ st.markdown("""
         backdrop-filter: blur(8px);
         margin-bottom: 1.2rem;
     }
+
+    /* Cockpit Telemetry Box */
+    .cockpit-box {
+        background: linear-gradient(145deg, rgba(15, 23, 42, 0.9) 0%, rgba(30, 41, 59, 0.8) 100%);
+        border: 1px solid rgba(16, 185, 129, 0.3);
+        border-radius: 16px;
+        padding: 1.2rem 1.4rem;
+        margin-top: 1rem;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -409,12 +419,12 @@ with st.sidebar:
     col_s2.metric("F1-Score", f"{ov_f1:.1f}%")
     
     st.divider()
-    st.markdown("#### 🧠 Autonomous System Features")
+    st.markdown("#### 🗺️ Navigation Telemetry")
     st.markdown("""
-    - **Voice Alerts**: Audio synthesis in browser
-    - **Autonomous Action**: Driving advisory per sign
-    - **Grad-CAM**: Explainable AI thermal maps
-    - **Weather Lab**: Rain, darkness, and blur testing
+    - **GPS Route Simulator**: Bavarian & Stuttgart Tracks
+    - **Live Perception**: Synchronized optical camera
+    - **Speed Control**: Autonomous throttle adaptation
+    - **Audio Advisory**: In-cabin driver warning
     """)
 
 # Hero Banner
@@ -422,14 +432,14 @@ st.markdown("""
 <div class="hero-container">
     <div class="hero-title">🚦 Autonomous Traffic Sign Vision</div>
     <div class="hero-subtitle">
-        Deep convolutional perception system trained on the German Traffic Sign Recognition Benchmark (GTSRB). Featuring real-time classification, voice audio warnings, autonomous vehicle action advisories, Grad-CAM explainable AI, and weather robustness simulation.
+        Deep convolutional perception system trained on the German Traffic Sign Recognition Benchmark (GTSRB). Featuring real-time classification, GPS route simulator, voice audio warnings, Grad-CAM explainability, and adverse weather testing.
     </div>
     <div class="badge-bar">
         <span class="metric-chip"><span class="chip-dot"></span> System: Active</span>
+        <span class="metric-chip">🗺️ GPS Route Simulator Active</span>
         <span class="metric-chip">🔊 Voice Alerts Ready</span>
         <span class="metric-chip">🚗 Driving Advisory Active</span>
         <span class="metric-chip">🔍 Grad-CAM Explainability</span>
-        <span class="metric-chip">🌧️ Weather Simulation Lab</span>
     </div>
 </div>
 """, unsafe_allow_html=True)
@@ -558,11 +568,12 @@ def render_results(img_source):
             report_str = f"Sign: {signNames[top_class]}\nConfidence: {top_conf:.2f}%\nPrecision: {cls_prec:.2f}%\nRecall: {cls_rec:.2f}%\nAdvisory: {adv['action']}\n"
             st.download_button("📄 Download Detection Log (TXT)", report_str, file_name=f"sign_detection_{top_class}.txt")
 
-# Navigation Tabs (7 Comprehensive Tabs)
-tab_upload, tab_camera, tab_gallery, tab_gradcam, tab_weather, tab_metrics, tab_viz = st.tabs([
+# Navigation Tabs (8 Comprehensive Tabs)
+tab_upload, tab_camera, tab_gallery, tab_route, tab_gradcam, tab_weather, tab_metrics, tab_viz = st.tabs([
     "📁 Upload Image",
     "📸 Live Camera AI",
     "🖼️ Sign Preset Gallery",
+    "🗺️ GPS Route Simulator",
     "🔍 Explainable AI (Grad-CAM)",
     "🌧️ Weather Simulation Lab",
     "📊 Confusion Matrix & Benchmark",
@@ -643,6 +654,210 @@ with tab_gallery:
                 st.info("👈 Click **Run Preset Benchmark** to view driving advisory and metrics.")
     else:
         st.warning("Sample presets directory not found.")
+
+# ----------------- TAB: GPS ROUTE SIMULATOR -----------------
+with tab_route:
+    st.markdown("### 🗺️ Interactive GPS Route & Autonomous Perception Simulator")
+    st.write("Simulate an autonomous vehicle traversing actual road routes in Germany, encountering traffic signs and executing real-time driving decisions.")
+    
+    sample_dir = os.path.join(os.path.dirname(__file__), 'sample_signs')
+    if not os.path.exists(sample_dir):
+        sample_dir = os.path.join(os.path.dirname(__file__), 'Traffic_Sign_Classifier-with-Streamlit-master', 'Test Random Images')
+        
+    # Route Definitions
+    route_definitions = {
+        "Route 1: Bavarian Autobahn & Alpine Corridor (Munich → Garmisch)": [
+            {'title': 'Munich City Center (Start)', 'lat': 48.1371, 'lon': 11.5761, 'file': 'speed_limit_50.jpg', 'speed': '50 km/h', 'status': 'Urban Cruising'},
+            {'title': 'Suburban School District', 'lat': 48.0850, 'lon': 11.5200, 'file': 'Children Crossing.jpg', 'speed': '25 km/h', 'status': 'Hazard Scan'},
+            {'title': 'Autobahn A95 On-Ramp', 'lat': 48.0120, 'lon': 11.4500, 'file': 'speed_limit_80.jpg', 'speed': '80 km/h', 'status': 'Highway Acceleration'},
+            {'title': 'Autobahn Fast Sector', 'lat': 47.8800, 'lon': 11.3500, 'file': 'speed_limit_120.jpg', 'speed': '120 km/h', 'status': 'High-Speed Cruising'},
+            {'title': 'Loisach River Bridge Construction', 'lat': 47.7600, 'lon': 11.2800, 'file': 'Road Work.jpg', 'speed': '40 km/h', 'status': 'Lane Narrowing'},
+            {'title': 'Alpine Pass Road Surface', 'lat': 47.6200, 'lon': 11.2000, 'file': 'slippery_road.jpg', 'speed': '35 km/h', 'status': 'Traction Assist Active'},
+            {'title': 'Mountain Junction Roundabout', 'lat': 47.5300, 'lon': 11.1200, 'file': 'Roundabout mandatory.jpg', 'speed': '30 km/h', 'status': 'Roundabout Yielding'},
+            {'title': 'Garmisch Checkpoint Border', 'lat': 47.4920, 'lon': 11.0950, 'file': 'stop.jpg', 'speed': '0 km/h', 'status': 'Full Stop at Line'}
+        ],
+        "Route 2: Stuttgart Smart City Test Track": [
+            {'title': 'Stuttgart Schlossplatz', 'lat': 48.7786, 'lon': 9.1798, 'file': 'Traffic signals.jpg', 'speed': '50 km/h', 'status': 'Traffic Light Scan'},
+            {'title': 'Downtown Pedestrian Mall', 'lat': 48.7750, 'lon': 9.1750, 'file': 'Pedestrians.jpg', 'speed': '20 km/h', 'status': 'Pedestrian Standby'},
+            {'title': 'Urban Junction Turn', 'lat': 48.7710, 'lon': 9.1700, 'file': 'Turn right ahead.jpg', 'speed': '30 km/h', 'status': 'Right Indicator Active'},
+            {'title': 'Transit Corridor Lane', 'lat': 48.7660, 'lon': 9.1650, 'file': 'Ahead only.jpg', 'speed': '40 km/h', 'status': 'Straight Only Lock'},
+            {'title': 'Ring Road Merge Point', 'lat': 48.7600, 'lon': 9.1600, 'file': 'yield.jpg', 'speed': '30 km/h', 'status': 'Yielding Cross Traffic'},
+            {'title': 'Restricted Historic District', 'lat': 48.7550, 'lon': 9.1550, 'file': 'No Entry.jpg', 'speed': '0 km/h', 'status': 'Route Divert Engaged'}
+        ]
+    }
+    
+    selected_route_name = st.selectbox("Select Autonomous GPS Route:", list(route_definitions.keys()), key="route_picker")
+    active_waypoints = route_definitions[selected_route_name]
+    num_wps = len(active_waypoints)
+    
+    # Waypoint navigation slider & controls
+    wp_col_s, wp_col_b1, wp_col_b2 = st.columns([3, 1, 1])
+    with wp_col_s:
+        current_wp_idx = st.slider(
+            "🚗 Vehicle Route Progress:",
+            min_value=0,
+            max_value=num_wps - 1,
+            value=0,
+            format="Waypoint %d",
+            key="wp_slider"
+        )
+    with wp_col_b1:
+        st.write("")
+        st.write("")
+        if st.button("⬅️ Prev", use_container_width=True, disabled=(current_wp_idx == 0)):
+            st.session_state["wp_slider"] = max(0, current_wp_idx - 1)
+            st.rerun()
+    with wp_col_b2:
+        st.write("")
+        st.write("")
+        if st.button("Next ➡️", use_container_width=True, disabled=(current_wp_idx == num_wps - 1)):
+            st.session_state["wp_slider"] = min(num_wps - 1, current_wp_idx + 1)
+            st.rerun()
+            
+    active_wp = active_waypoints[current_wp_idx]
+    
+    # Build Pydeck Map Data
+    df_all_wps = pd.DataFrame(active_waypoints)
+    path_data = [{'path': [[wp['lon'], wp['lat']] for wp in active_waypoints]}]
+    car_df = pd.DataFrame([active_wp])
+    
+    # Pydeck Layers
+    path_layer = pdk.Layer(
+        'PathLayer',
+        data=path_data,
+        get_path='path',
+        get_color=[96, 165, 250, 200],
+        width_min_pixels=4
+    )
+    
+    waypoints_layer = pdk.Layer(
+        'ScatterplotLayer',
+        data=df_all_wps,
+        get_position='[lon, lat]',
+        get_color=[245, 158, 11, 200],
+        get_radius=800,
+        pickable=True
+    )
+    
+    car_layer = pdk.Layer(
+        'ScatterplotLayer',
+        data=car_df,
+        get_position='[lon, lat]',
+        get_color=[16, 185, 129, 255],
+        get_radius=1600,
+        pickable=True
+    )
+    
+    view_state = pdk.ViewState(
+        latitude=active_wp['lat'],
+        longitude=active_wp['lon'],
+        zoom=10.5,
+        pitch=45
+    )
+    
+    deck = pdk.Deck(
+        map_style='https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
+        layers=[path_layer, waypoints_layer, car_layer],
+        initial_view_state=view_state,
+        tooltip={"text": "{title}\nTarget Speed: {speed}"}
+    )
+    
+    st.pydeck_chart(deck, use_container_width=True)
+    
+    # Synchronized Perception & Cockpit Telemetry
+    st.markdown("#### 📡 Real-Time Waypoint Perception & Telemetry")
+    rc_col1, rc_col2, rc_col3 = st.columns([1, 1, 1], gap="medium")
+    
+    wp_img_path = os.path.join(sample_dir, active_wp['file'])
+    
+    with rc_col1:
+        st.markdown("##### 📷 Windshield Camera Sight")
+        if os.path.exists(wp_img_path):
+            st.image(Image.open(wp_img_path), caption=f"Observed: {active_wp['file']}", use_container_width=True)
+            wp_probs = classify.predict(wp_img_path)[0]
+            wp_pred = int(np.argmax(wp_probs))
+            wp_conf = float(wp_probs[wp_pred] * 100)
+            st.success(f"**Identified:** {signNames[wp_pred]} (`{wp_conf:.1f}%`)")
+        else:
+            st.warning("Sign image not found.")
+            wp_pred = 0
+            wp_conf = 0
+            
+    with rc_col2:
+        st.markdown("##### 🚗 Digital Instrument Cluster")
+        adv_info = VEHICLE_ACTIONS.get(wp_pred, {"action": "Cruising", "urgency": "Normal", "class": "urg-normal", "icon": "🚙"})
+        st.markdown(f"""
+        <div class="cockpit-box">
+            <div style="font-size: 0.8rem; color: #94A3B8; text-transform: uppercase;">Waypoint Position</div>
+            <div style="font-size: 1.15rem; font-weight: 800; color: #FFFFFF; margin-bottom: 0.6rem;">{active_wp['title']}</div>
+            
+            <div style="font-size: 0.8rem; color: #94A3B8; text-transform: uppercase;">Target Road Speed</div>
+            <div style="font-size: 1.8rem; font-weight: 800; color: #10B981; font-family: 'JetBrains Mono', monospace;">{active_wp['speed']}</div>
+            
+            <div style="margin-top: 0.6rem; font-size: 0.85rem; color: #CBD5E1;">
+                <strong>GPS:</strong> <code>{active_wp['lat']:.4f}° N, {active_wp['lon']:.4f}° E</code>
+            </div>
+            <div style="font-size: 0.85rem; color: #CBD5E1;">
+                <strong>Autopilot:</strong> <span style="color: #60A5FA;">Active (Level 3 Autonomous)</span>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+    with rc_col3:
+        st.markdown("##### 🛡️ Autonomous Vehicle Response")
+        st.markdown(f"""
+        <div class="advisory-box" style="margin-top: 0.5rem;">
+            <div class="advisory-title">
+                <span>Vehicle Control Action</span>
+                <span class="urgency-pill {adv_info['class']}">{adv_info['urgency'].upper()} PRIORITY</span>
+            </div>
+            <div class="advisory-text" style="font-size: 1rem;">{adv_info['icon']} {adv_info['action']}</div>
+            <div style="margin-top: 0.8rem; font-size: 0.85rem; color: #94A3B8;">
+                <strong>Route Maneuver:</strong> {active_wp['status']}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Audio Speech Trigger for Route Simulator
+        route_speech = f"Approaching waypoint: {active_wp['title']}. Sign recognized: {signNames[wp_pred]}. Action: {adv_info['action']}"
+        if enable_voice:
+            st.components.v1.html(f"""
+            <script>
+            if ('speechSynthesis' in window) {{
+                window.speechSynthesis.cancel();
+                let u = new SpeechSynthesisUtterance("{route_speech}");
+                u.rate = 1.0;
+                window.speechSynthesis.speak(u);
+            }}
+            </script>
+            """, height=0)
+            
+        if st.button("🔊 Voice Announce Waypoint", key="wp_audio_btn", use_container_width=True):
+            st.components.v1.html(f"""
+            <script>
+            if ('speechSynthesis' in window) {{
+                window.speechSynthesis.cancel();
+                let u = new SpeechSynthesisUtterance("{route_speech}");
+                u.rate = 1.0;
+                window.speechSynthesis.speak(u);
+            }}
+            </script>
+            """, height=0)
+
+    # Route Waypoints Diary
+    with st.expander("📋 View Complete Autonomous Route Mission Log", expanded=False):
+        df_log = pd.DataFrame([
+            {
+                "WP #": idx + 1,
+                "Waypoint Location": wp['title'],
+                "Road Sign": wp['file'],
+                "Target Speed": wp['speed'],
+                "Maneuver": wp['status'],
+                "GPS Coordinates": f"{wp['lat']:.4f}, {wp['lon']:.4f}"
+            }
+            for idx, wp in enumerate(active_waypoints)
+        ])
+        st.dataframe(df_log, use_container_width=True, hide_index=True)
 
 # ----------------- TAB: EXPLAINABLE AI (GRAD-CAM) -----------------
 with tab_gradcam:
