@@ -10,6 +10,23 @@ import plotly.express as px
 import plotly.graph_objects as go
 import pydeck as pdk
 import cv2
+import base64
+
+# Load & Cache Background Image in Base64
+@st.cache_data
+def load_bg_base64(filename='black_porsche_bg.jpg'):
+    for p in [
+        os.path.join(os.path.dirname(__file__), 'assets', filename),
+        os.path.join(os.getcwd(), 'assets', filename),
+        f'assets/{filename}'
+    ]:
+        if os.path.exists(p):
+            try:
+                with open(p, 'rb') as f:
+                    return base64.b64encode(f.read()).decode()
+            except Exception:
+                pass
+    return ""
 
 # Page Configuration
 st.set_page_config(
@@ -426,6 +443,46 @@ with st.sidebar:
     - **Speed Control**: Autonomous throttle adaptation
     - **Audio Advisory**: In-cabin driver warning
     """)
+    
+    st.divider()
+    st.markdown("#### 🏎️ Vehicle Cockpit Theme")
+    headlights_on = st.toggle("💡 Porsche Headlights", value=True, help="Toggle between luminous xenon headlights ON and headlights OFF.")
+    bg_dimness = st.slider("Porsche Background Dimness", min_value=0.20, max_value=0.92, value=0.74, step=0.02,
+                           help="Adjust to make the black Porsche background more visible or darker for higher text contrast.")
+
+# Dynamic Black Porsche Background CSS
+bg_img_file = 'black_porsche_bg.jpg' if headlights_on else 'black_porsche_original.jpg'
+bg_b64 = load_bg_base64(bg_img_file)
+
+if bg_b64:
+    dim_top = f"{bg_dimness:.2f}"
+    dim_bottom = f"{min(1.0, bg_dimness + 0.12):.2f}"
+    st.markdown(f"""
+    <style>
+        .stApp {{
+            background: linear-gradient(180deg, rgba(8, 12, 22, {dim_top}) 0%, rgba(8, 12, 22, {dim_bottom}) 100%),
+                        url("data:image/jpeg;base64,{bg_b64}") no-repeat center center fixed !important;
+            background-size: cover !important;
+        }}
+        .stApp > header {{
+            background: transparent !important;
+        }}
+        [data-testid="stAppViewContainer"] {{
+            background: transparent !important;
+        }}
+        [data-testid="stMain"] {{
+            background: transparent !important;
+        }}
+        [data-testid="stHeader"] {{
+            background: transparent !important;
+        }}
+        [data-testid="stSidebar"] {{
+            background-color: rgba(10, 14, 26, 0.88) !important;
+            backdrop-filter: blur(16px) !important;
+            border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
+        }}
+    </style>
+    """, unsafe_allow_html=True)
 
 # Hero Banner
 st.markdown("""
@@ -436,6 +493,7 @@ st.markdown("""
     </div>
     <div class="badge-bar">
         <span class="metric-chip"><span class="chip-dot"></span> System: Active</span>
+        <span class="metric-chip">🏎️ Porsche GT3 RS Vision Cockpit</span>
         <span class="metric-chip">🗺️ GPS Route Simulator Active</span>
         <span class="metric-chip">🔊 Voice Alerts Ready</span>
         <span class="metric-chip">🚗 Driving Advisory Active</span>
