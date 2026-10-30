@@ -69,19 +69,184 @@ st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
 
-    html, body, [class*="css"] {
+    /* Universal High-Contrast Typography & Readability */
+    html, body, [class*="css"], [class*="st-"] {
         font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+        color: #F8FAFC !important;
+    }
+
+    h1, h2, h3, h4, h5, h6, 
+    .stMarkdown h1, .stMarkdown h2, .stMarkdown h3, .stMarkdown h4, .stMarkdown h5, .stMarkdown h6 {
+        color: #FFFFFF !important;
+        font-weight: 700 !important;
+        letter-spacing: -0.01em;
+        text-shadow: 0 2px 6px rgba(0, 0, 0, 0.9) !important;
+    }
+
+    p, span, div, li, .stMarkdown p, .stMarkdown span {
+        color: #F1F5F9 !important;
+        line-height: 1.6;
+        text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
+    }
+
+    strong, b {
+        color: #FFFFFF !important;
+        font-weight: 700 !important;
+    }
+
+    code {
+        color: #60A5FA !important;
+        background: rgba(15, 23, 42, 0.8) !important;
+        padding: 0.15rem 0.4rem !important;
+        border-radius: 4px !important;
+        border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    }
+
+    /* Streamlit Widget Labels (Sliders, Selectboxes, Radio, Checkboxes, File Uploader) */
+    [data-testid="stWidgetLabel"] label, 
+    [data-testid="stWidgetLabel"] p, 
+    [data-testid="stWidgetLabel"] span,
+    .stSlider label,
+    .stSelectbox label,
+    .stRadio label,
+    .stCheckbox label,
+    .stToggle label,
+    .stFileUploader label {
+        color: #FFFFFF !important;
+        font-size: 0.95rem !important;
+        font-weight: 700 !important;
+        text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9) !important;
+    }
+
+    /* Tabs Bar High-Contrast */
+    [data-baseweb="tab-list"] {
+        background-color: rgba(13, 18, 30, 0.92) !important;
+        border-radius: 12px !important;
+        padding: 0.35rem 0.6rem !important;
+        border: 1px solid rgba(255, 255, 255, 0.14) !important;
+        backdrop-filter: blur(16px) !important;
+        gap: 0.4rem !important;
+    }
+
+    [data-baseweb="tab"] {
+        color: #CBD5E1 !important;
+        font-weight: 600 !important;
+        font-size: 0.92rem !important;
+        padding: 0.6rem 1.1rem !important;
+        background: transparent !important;
+        border-radius: 8px !important;
+        text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+    }
+
+    [data-baseweb="tab"]:hover {
+        color: #FFFFFF !important;
+        background: rgba(255, 255, 255, 0.08) !important;
+    }
+
+    [data-baseweb="tab"][aria-selected="true"] {
+        color: #FFFFFF !important;
+        font-weight: 800 !important;
+        background: rgba(37, 99, 235, 0.35) !important;
+        border-bottom: 2px solid #3B82F6 !important;
+        text-shadow: 0 0 10px rgba(59, 130, 246, 0.8) !important;
+    }
+
+    /* Metrics */
+    [data-testid="stMetricValue"] {
+        color: #FFFFFF !important;
+        font-weight: 800 !important;
+        font-family: 'JetBrains Mono', monospace !important;
+        text-shadow: 0 2px 6px rgba(0, 0, 0, 0.9) !important;
+    }
+
+    [data-testid="stMetricLabel"] {
+        color: #CBD5E1 !important;
+        font-weight: 700 !important;
+        text-transform: uppercase;
+        font-size: 0.8rem !important;
+        letter-spacing: 0.05em;
+    }
+
+    /* Expander Elements */
+    [data-testid="stExpander"] {
+        background: rgba(13, 18, 30, 0.88) !important;
+        border: 1px solid rgba(255, 255, 255, 0.14) !important;
+        border-radius: 14px !important;
+        backdrop-filter: blur(14px) !important;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4) !important;
+    }
+
+    [data-testid="stExpander"] summary {
+        color: #FFFFFF !important;
+        font-weight: 700 !important;
+    }
+
+    [data-testid="stExpander"] summary span,
+    [data-testid="stExpander"] summary p {
+        color: #FFFFFF !important;
+        font-weight: 700 !important;
+    }
+
+    /* Streamlit Alert Boxes */
+    .stAlert {
+        background: rgba(15, 23, 42, 0.92) !important;
+        backdrop-filter: blur(14px) !important;
+        border: 1px solid rgba(255, 255, 255, 0.14) !important;
+        border-radius: 12px !important;
+    }
+    .stAlert p, .stAlert span {
+        color: #F8FAFC !important;
+    }
+
+    /* Buttons */
+    .stButton button {
+        background: linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%) !important;
+        color: #FFFFFF !important;
+        font-weight: 700 !important;
+        border: 1px solid rgba(255, 255, 255, 0.2) !important;
+        border-radius: 10px !important;
+        box-shadow: 0 4px 14px rgba(37, 99, 235, 0.35) !important;
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6) !important;
+    }
+    .stButton button p, .stButton button span {
+        color: #FFFFFF !important;
+    }
+
+    /* File Uploader */
+    [data-testid="stFileUploader"] section {
+        background: rgba(15, 23, 42, 0.88) !important;
+        border: 1.5px dashed rgba(96, 165, 250, 0.5) !important;
+        border-radius: 14px !important;
+        backdrop-filter: blur(12px) !important;
+    }
+    [data-testid="stFileUploader"] section span,
+    [data-testid="stFileUploader"] section small {
+        color: #E2E8F0 !important;
+    }
+
+    /* Captions */
+    .stCaption, [data-testid="stCaptionContainer"] {
+        color: #CBD5E1 !important;
+        font-size: 0.85rem !important;
+    }
+
+    /* Dataframes & Tables */
+    [data-testid="stDataFrame"] {
+        background: rgba(13, 18, 30, 0.92) !important;
+        border-radius: 12px;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        backdrop-filter: blur(14px);
     }
 
     /* Hero Banner */
     .hero-container {
-        background: linear-gradient(135deg, rgba(30, 41, 59, 0.7) 0%, rgba(15, 23, 42, 0.9) 100%);
-        border: 1px solid rgba(255, 255, 255, 0.1);
+        background: linear-gradient(135deg, rgba(15, 23, 42, 0.88) 0%, rgba(10, 15, 29, 0.95) 100%);
+        border: 1px solid rgba(255, 255, 255, 0.15);
         border-radius: 20px;
         padding: 2.2rem 2.5rem;
         margin-bottom: 2rem;
-        box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.5);
-        backdrop-filter: blur(12px);
+        box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.6);
+        backdrop-filter: blur(16px);
     }
 
     .hero-title {
@@ -95,7 +260,7 @@ st.markdown("""
     }
 
     .hero-subtitle {
-        color: #94A3B8;
+        color: #E2E8F0;
         font-size: 1.05rem;
         font-weight: 400;
         line-height: 1.6;
@@ -447,7 +612,7 @@ with st.sidebar:
     st.divider()
     st.markdown("#### 🏎️ Vehicle Cockpit Theme")
     headlights_on = st.toggle("💡 Porsche Headlights", value=True, help="Toggle between luminous xenon headlights ON and headlights OFF.")
-    bg_dimness = st.slider("Porsche Background Dimness", min_value=0.20, max_value=0.92, value=0.74, step=0.02,
+    bg_dimness = st.slider("Porsche Background Dimness", min_value=0.20, max_value=0.96, value=0.80, step=0.02,
                            help="Adjust to make the black Porsche background more visible or darker for higher text contrast.")
 
 # Dynamic Black Porsche Background CSS
@@ -477,9 +642,14 @@ if bg_b64:
             background: transparent !important;
         }}
         [data-testid="stSidebar"] {{
-            background-color: rgba(10, 14, 26, 0.88) !important;
-            backdrop-filter: blur(16px) !important;
-            border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
+            background-color: rgba(10, 14, 26, 0.94) !important;
+            backdrop-filter: blur(20px) !important;
+            border-right: 1px solid rgba(255, 255, 255, 0.12) !important;
+        }}
+        .block-container {{
+            max-width: 1320px !important;
+            padding-top: 2rem !important;
+            padding-bottom: 4rem !important;
         }}
     </style>
     """, unsafe_allow_html=True)
