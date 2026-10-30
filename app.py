@@ -6,10 +6,12 @@ import os
 import glob
 import json
 import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
 
 # Page Configuration
 st.set_page_config(
-    page_title="AI Traffic Sign Vision | Perception & Metrics",
+    page_title="AI Traffic Sign Vision | Perception & Confusion Matrix",
     page_icon="🚦",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -23,7 +25,16 @@ def load_metrics():
                 return json.load(f)
     return {}
 
+# Load Confusion Matrix
+def load_cm():
+    for p in ['confusion_matrix.json', os.path.join(os.path.dirname(__file__), 'confusion_matrix.json')]:
+        if os.path.exists(p):
+            with open(p, 'r') as f:
+                return json.load(f)
+    return {'cm': [], 'analysis': {}}
+
 METRICS_DATA = load_metrics()
+CM_DATA = load_cm()
 
 # Custom High-End Modern CSS Styling
 st.markdown("""
@@ -136,7 +147,7 @@ st.markdown("""
         display: grid;
         grid-template-columns: repeat(4, 1fr);
         gap: 0.75rem;
-        margin-bottom: 1.5rem;
+        margin-bottom: 1.2rem;
     }
 
     .metric-tile {
@@ -157,20 +168,49 @@ st.markdown("""
     }
 
     .tile-value {
-        font-size: 1.4rem;
+        font-size: 1.35rem;
         font-weight: 800;
         font-family: 'JetBrains Mono', monospace;
     }
 
-    .glass-card {
-        background: rgba(30, 41, 59, 0.5);
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        border-radius: 16px;
-        padding: 1.5rem;
-        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
-        backdrop-filter: blur(8px);
-        margin-bottom: 1.2rem;
+    /* Confusion Matrix Diagnostic Banner */
+    .cm-banner {
+        background: rgba(15, 23, 42, 0.7);
+        border: 1px solid rgba(148, 163, 184, 0.15);
+        border-radius: 12px;
+        padding: 0.9rem 1.1rem;
+        margin-bottom: 1.3rem;
     }
+
+    .cm-banner-title {
+        font-size: 0.8rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: #94A3B8;
+        font-weight: 700;
+        margin-bottom: 0.5rem;
+        display: flex;
+        justify-content: space-between;
+    }
+
+    .cm-stats {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1.2rem;
+        font-size: 0.88rem;
+        color: #E2E8F0;
+    }
+
+    .cm-badge {
+        font-family: 'JetBrains Mono', monospace;
+        font-weight: 700;
+        padding: 0.15rem 0.45rem;
+        border-radius: 6px;
+    }
+
+    .badge-tp { background: rgba(16, 185, 129, 0.2); color: #34D399; }
+    .badge-fp { background: rgba(245, 158, 11, 0.2); color: #FBBF24; }
+    .badge-fn { background: rgba(239, 68, 68, 0.2); color: #F87171; }
 
     .cand-row {
         display: flex;
@@ -182,6 +222,16 @@ st.markdown("""
 
     .cand-name { color: #E2E8F0; font-weight: 500; }
     .cand-val { font-family: 'JetBrains Mono', monospace; font-weight: 700; color: #60A5FA; }
+
+    .glass-card {
+        background: rgba(30, 41, 59, 0.5);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 16px;
+        padding: 1.5rem;
+        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+        backdrop-filter: blur(8px);
+        margin-bottom: 1.2rem;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -263,12 +313,12 @@ with st.sidebar:
     col_s2.metric("F1-Score", f"{ov_f1:.1f}%")
     
     st.divider()
-    st.markdown("#### 🧠 Model Specifications")
+    st.markdown("#### 🔄 Confusion Matrix Specs")
     st.markdown("""
-    - **Architecture**: 3-Stage CNN + Dense
-    - **Dataset**: GTSRB Benchmark
-    - **Classes**: 43 European Road Signs
-    - **Input Shape**: 32 × 32 × 1
+    - **Matrix Dimension**: 43 × 43
+    - **Total Test Cases**: 4,410
+    - **True Positives**: Diagonal Sum
+    - **Misclassifications**: Off-Diagonal
     """)
 
 # Hero Banner
@@ -276,18 +326,18 @@ st.markdown("""
 <div class="hero-container">
     <div class="hero-title">🚦 Autonomous Traffic Sign Vision</div>
     <div class="hero-subtitle">
-        Deep convolutional perception system trained on the German Traffic Sign Recognition Benchmark (GTSRB). Every prediction reports real-time Confidence, Class Precision, Recall, and F1-Score metrics.
+        Deep convolutional perception system trained on the German Traffic Sign Recognition Benchmark (GTSRB). Displays real-time Accuracy, Precision, Recall, and full Confusion Matrix diagnostic columns.
     </div>
     <div class="badge-bar">
         <span class="metric-chip"><span class="chip-dot"></span> System: Active</span>
-        <span class="metric-chip">🎯 43 Classes Verified</span>
+        <span class="metric-chip">🎯 43 Classes Covered</span>
+        <span class="metric-chip">🔄 Confusion Matrix Active</span>
         <span class="metric-chip">📊 Live Metrics Enabled</span>
-        <span class="metric-chip">⚡ Sub-15ms Latency</span>
     </div>
 </div>
 """, unsafe_allow_html=True)
 
-# Helper function to display prediction card with Accuracy, Precision, Recall
+# Helper function to display prediction card with Accuracy, Precision, Recall & Confusion Matrix
 def render_results(img_source):
     with st.spinner("🧠 Analyzing image with neural perception..."):
         probs = classify.predict(img_source)[0]
@@ -296,11 +346,19 @@ def render_results(img_source):
         top_conf = probs[top_class] * 100
         cat_name, cat_class, cat_icon = get_sign_category(top_class)
         
-        # Class benchmark metrics from test set
+        # Benchmark metrics
         cls_info = METRICS_DATA.get(str(top_class), {})
         cls_prec = cls_info.get('precision', 0.85) * 100
         cls_rec = cls_info.get('recall', 0.82) * 100
         cls_f1 = cls_info.get('f1-score', 0.83) * 100
+        
+        # Confusion matrix data for this class
+        cm_info = CM_DATA.get('analysis', {}).get(str(top_class), {})
+        tp = cm_info.get('tp', 0)
+        fp = cm_info.get('fp', 0)
+        fn = cm_info.get('fn', 0)
+        top_conf_cls = cm_info.get('top_confused_class')
+        top_conf_count = cm_info.get('top_confused_count', 0)
         
         # Result Header Card
         st.markdown(f"""
@@ -328,6 +386,22 @@ def render_results(img_source):
                     <div class="tile-value" style="color: #A78BFA;">{cls_f1:.1f}%</div>
                 </div>
             </div>
+            
+            <!-- Confusion Matrix Diagnostics Column / Box -->
+            <div class="cm-banner">
+                <div class="cm-banner-title">
+                    <span>🔄 Confusion Matrix Profile for this Class</span>
+                    <span>Test Samples: {cm_info.get('total', 0)}</span>
+                </div>
+                <div class="cm-stats">
+                    <span>True Positives (TP): <span class="cm-badge badge-tp">{tp}</span></span>
+                    <span>False Positives (FP): <span class="cm-badge badge-fp">{fp}</span></span>
+                    <span>False Negatives (FN): <span class="cm-badge badge-fn">{fn}</span></span>
+                </div>
+                <div style="margin-top: 0.5rem; font-size: 0.84rem; color: #94A3B8;">
+                    <strong>Confusion Matrix Risk:</strong> {f"Most confused with <strong>{signNames[top_conf_cls]}</strong> ({top_conf_count} misclassifications in benchmark)" if top_conf_cls is not None else "Zero confusion in benchmark (100% correct)."}
+                </div>
+            </div>
         """, unsafe_allow_html=True)
         
         st.markdown("<h5 style='color: #CBD5E1; margin-top: 1rem;'>Ranked Candidate Probabilities</h5>", unsafe_allow_html=True)
@@ -349,7 +423,7 @@ tab_upload, tab_camera, tab_gallery, tab_metrics = st.tabs([
     "📁 Upload Image",
     "📸 Live Camera AI",
     "🖼️ Sign Preset Gallery",
-    "📊 Precision & Recall Benchmark"
+    "📊 Confusion Matrix & Benchmark"
 ])
 
 with tab_upload:
@@ -368,13 +442,13 @@ with tab_upload:
         if uploaded_file is not None and ('classify_btn' in locals() and classify_btn):
             render_results(uploaded_file)
         elif uploaded_file is not None:
-            st.info("👈 Click **Analyze Traffic Sign** to inspect accuracy, precision, and recall.")
+            st.info("👈 Click **Analyze Traffic Sign** to inspect accuracy, precision, recall, and confusion matrix.")
         else:
             st.markdown("""
             <div class="glass-card" style="text-align: center; padding: 3rem 1rem;">
                 <div style="font-size: 3rem; margin-bottom: 0.5rem;">📸</div>
                 <h4 style="color: #94A3B8;">Awaiting Image Upload</h4>
-                <p style="color: #64748B; font-size: 0.9rem;">Upload a file on the left to see neural classification and accuracy metrics here.</p>
+                <p style="color: #64748B; font-size: 0.9rem;">Upload a file on the left to see neural classification and confusion matrix metrics here.</p>
             </div>
             """, unsafe_allow_html=True)
 
@@ -423,13 +497,13 @@ with tab_gallery:
             if selected_sample and ('sample_btn' in locals() and sample_btn):
                 render_results(sample_path)
             elif selected_sample:
-                st.info("👈 Click **Run Preset Benchmark** to view precision & recall.")
+                st.info("👈 Click **Run Preset Benchmark** to view confusion matrix diagnostics.")
     else:
         st.warning("Sample presets directory not found.")
 
 with tab_metrics:
-    st.markdown("### 📊 Comprehensive Performance Benchmark")
-    st.write("Calculated on the official German Traffic Sign Recognition Benchmark (GTSRB) test dataset:")
+    st.markdown("### 📊 Comprehensive Performance & Confusion Matrix Benchmark")
+    st.write("Calculated on the official German Traffic Sign Recognition Benchmark (GTSRB) test dataset (4,410 test samples):")
     
     col_m1, col_m2, col_m3, col_m4 = st.columns(4)
     col_m1.metric("🎯 Overall Accuracy", f"{ov_acc:.2f}%", help="Correct predictions across all test samples")
@@ -437,21 +511,118 @@ with tab_metrics:
     col_m3.metric("📡 Macro Recall", f"{ov_rec:.2f}%", help="True positives / (True positives + False negatives)")
     col_m4.metric("⚖️ Weighted F1-Score", f"{ov_f1:.2f}%", help="Harmonic mean of precision and recall")
     
-    st.markdown("#### 📋 Class-by-Class Accuracy, Precision & Recall")
-    table_rows = []
-    for cid in range(43):
-        str_id = str(cid)
-        c_name = signNames[cid]
-        c_cat, _, _ = get_sign_category(cid)
-        data = METRICS_DATA.get(str_id, {})
-        table_rows.append({
-            "Class ID": cid,
-            "Sign Name": c_name,
-            "Category": c_cat,
-            "Precision": f"{data.get('precision', 0.0)*100:.1f}%",
-            "Recall": f"{data.get('recall', 0.0)*100:.1f}%",
-            "F1-Score": f"{data.get('f1-score', 0.0)*100:.1f}%",
-            "Test Samples": int(data.get('support', 0))
-        })
-    df_metrics = pd.DataFrame(table_rows)
-    st.dataframe(df_metrics, use_container_width=True, hide_index=True)
+    st.divider()
+    
+    # Side-by-side columns: Benchmark Table (with Confusion Matrix Columns) + Interactive CM Explorer
+    col_tab1, col_tab2 = st.columns([3, 2], gap="large")
+    
+    with col_tab1:
+        st.markdown("#### 📋 Class-by-Class Table with Confusion Matrix Columns")
+        st.caption("Scroll horizontally to view True Positives (TP), False Positives (FP), False Negatives (FN), and Most Confused Class:")
+        
+        table_rows = []
+        for cid in range(43):
+            str_id = str(cid)
+            c_name = signNames[cid]
+            c_cat, _, _ = get_sign_category(cid)
+            data = METRICS_DATA.get(str_id, {})
+            cm_item = CM_DATA.get('analysis', {}).get(str_id, {})
+            
+            top_cf = cm_item.get('top_confused_class')
+            top_cf_cnt = cm_item.get('top_confused_count', 0)
+            confused_str = f"{signNames[top_cf]} ({top_cf_cnt})" if (top_cf is not None and top_cf_cnt > 0) else "None (100% Clean)"
+            
+            table_rows.append({
+                "ID": cid,
+                "Sign Name": c_name,
+                "Category": c_cat,
+                "Precision": f"{data.get('precision', 0.0)*100:.1f}%",
+                "Recall": f"{data.get('recall', 0.0)*100:.1f}%",
+                "F1-Score": f"{data.get('f1-score', 0.0)*100:.1f}%",
+                "TP": cm_item.get('tp', 0),
+                "FP": cm_item.get('fp', 0),
+                "FN": cm_item.get('fn', 0),
+                "Most Confused With (Matrix)": confused_str,
+                "Samples": int(data.get('support', 0))
+            })
+        df_metrics = pd.DataFrame(table_rows)
+        st.dataframe(df_metrics, use_container_width=True, hide_index=True)
+
+    with col_tab2:
+        st.markdown("#### 🔄 Confusion Matrix Drill-Down Explorer")
+        st.write("Inspect how the model classified any sign against other candidates:")
+        
+        sel_cid = st.selectbox(
+            "Select sign to inspect confusion breakdown:",
+            options=list(range(43)),
+            format_func=lambda x: f"Class {x}: {signNames[x]}",
+            index=1
+        )
+        
+        if CM_DATA.get('cm'):
+            cm_arr = np.array(CM_DATA['cm'])
+            row = cm_arr[sel_cid]
+            total_actual = int(row.sum())
+            correct = int(row[sel_cid])
+            acc_pct = (correct / total_actual * 100) if total_actual > 0 else 0
+            
+            st.markdown(f"""
+            <div class="glass-card" style="padding: 1rem 1.2rem; margin-bottom: 1rem;">
+                <div style="font-size: 0.85rem; color: #94A3B8;">Actual Class: <strong>{signNames[sel_cid]}</strong></div>
+                <div style="font-size: 1.2rem; font-weight: 800; color: #10B981; margin: 0.3rem 0;">
+                    {correct} / {total_actual} Correct ({acc_pct:.1f}% Accuracy)
+                </div>
+                <div style="font-size: 0.85rem; color: #CBD5E1;">
+                    Misclassified: <strong>{total_actual - correct}</strong> instances
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Show top confusion destinations as a clean bar chart
+            confused_indices = np.argsort(row)[::-1]
+            top_dest = [idx for idx in confused_indices if row[idx] > 0][:5]
+            
+            bar_labels = [signNames[i][:25] + ("..." if len(signNames[i]) > 25 else "") for i in top_dest]
+            bar_counts = [int(row[i]) for i in top_dest]
+            bar_colors = ['#10B981' if i == sel_cid else '#EF4444' for i in top_dest]
+            
+            fig = go.Figure(go.Bar(
+                x=bar_counts,
+                y=bar_labels,
+                orientation='h',
+                marker_color=bar_colors,
+                text=bar_counts,
+                textposition='auto'
+            ))
+            fig.update_layout(
+                title=f"Prediction Distribution for Class {sel_cid}",
+                xaxis_title="Number of Predictions",
+                yaxis=dict(autorange="reversed"),
+                height=320,
+                margin=dict(l=10, r=10, t=35, b=10),
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
+                font=dict(color="#CBD5E1")
+            )
+            st.plotly_chart(fig, use_container_width=True)
+
+    st.markdown("#### 🗺️ Full 43 × 43 Confusion Matrix Heatmap")
+    with st.expander("Click to Expand Full 43x43 Matrix Heatmap", expanded=False):
+        if CM_DATA.get('cm'):
+            cm_arr = np.array(CM_DATA['cm'])
+            short_labels = [f"C{i}" for i in range(43)]
+            fig_heatmap = px.imshow(
+                cm_arr,
+                labels=dict(x="Predicted Class", y="Actual Class", color="Count"),
+                x=short_labels,
+                y=short_labels,
+                color_continuous_scale="Blues"
+            )
+            fig_heatmap.update_layout(
+                height=650,
+                margin=dict(l=20, r=20, t=30, b=20),
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
+                font=dict(color="#CBD5E1")
+            )
+            st.plotly_chart(fig_heatmap, use_container_width=True)
