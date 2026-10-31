@@ -547,6 +547,53 @@ st.markdown("""
     .cand-name { color: #E2E8F0; font-weight: 500; }
     .cand-val { font-family: 'JetBrains Mono', monospace; font-weight: 700; color: #60A5FA; }
 
+    .cand-card {
+        background: rgba(15, 23, 42, 0.65);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 10px;
+        padding: 0.75rem 1rem;
+        margin-bottom: 0.6rem;
+        transition: all 0.2s ease-in-out;
+    }
+    .cand-card:hover {
+        border-color: rgba(96, 165, 250, 0.4);
+        background: rgba(30, 41, 59, 0.7);
+    }
+    .cand-card-rank-1 {
+        border-left: 4px solid #10B981;
+        background: linear-gradient(90deg, rgba(16, 185, 129, 0.12) 0%, rgba(15, 23, 42, 0.7) 100%);
+    }
+    .cand-card-rank-2 {
+        border-left: 4px solid #60A5FA;
+    }
+    .cand-card-rank-3 {
+        border-left: 4px solid #F59E0B;
+    }
+    .cand-card-rank-other {
+        border-left: 4px solid #64748B;
+    }
+    .cand-progress-bg {
+        width: 100%;
+        height: 6px;
+        background: rgba(255, 255, 255, 0.08);
+        border-radius: 3px;
+        overflow: hidden;
+        margin-top: 0.4rem;
+    }
+    .cand-progress-fill {
+        height: 100%;
+        border-radius: 3px;
+        transition: width 0.4s ease-in-out;
+    }
+    .cand-delta-pill {
+        font-size: 0.72rem;
+        padding: 0.15rem 0.45rem;
+        border-radius: 6px;
+        font-family: 'JetBrains Mono', monospace;
+        background: rgba(255, 255, 255, 0.06);
+        color: #94A3B8;
+    }
+
     .glass-card {
         background: rgba(30, 41, 59, 0.5);
         border: 1px solid rgba(255, 255, 255, 0.08);
@@ -1041,17 +1088,117 @@ def render_results(img_source, auto_crop=True):
             </div>
         """, unsafe_allow_html=True)
         
-        st.markdown("<h5 style='color: #CBD5E1; margin-top: 1rem;'>Ranked Candidate Probabilities</h5>", unsafe_allow_html=True)
+        top_prob = probs[top_class]
+        second_prob = probs[top_indices[1]] if len(top_indices) > 1 else 0.0
+        delta_margin = (top_prob - second_prob) * 100
+        
+        if top_prob >= 0.90:
+            certainty_badge = f'<span style="background: rgba(16, 185, 129, 0.2); color: #34D399; padding: 0.2rem 0.6rem; border-radius: 999px; font-size: 0.8rem; font-weight: 600; border: 1px solid rgba(16, 185, 129, 0.4);">🎯 High Certainty (+{delta_margin:.1f}% margin)</span>'
+        elif top_prob >= 0.70:
+            certainty_badge = f'<span style="background: rgba(245, 158, 11, 0.2); color: #FBBF24; padding: 0.2rem 0.6rem; border-radius: 999px; font-size: 0.8rem; font-weight: 600; border: 1px solid rgba(245, 158, 11, 0.4);">⚠️ Moderate (+{delta_margin:.1f}% margin)</span>'
+        else:
+            certainty_badge = f'<span style="background: rgba(239, 68, 68, 0.2); color: #F87171; padding: 0.2rem 0.6rem; border-radius: 999px; font-size: 0.8rem; font-weight: 600; border: 1px solid rgba(239, 68, 68, 0.4);">⚡ Ambiguous Visuals (+{delta_margin:.1f}% margin)</span>'
+
+        st.markdown(f"""
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 1.2rem; margin-bottom: 0.8rem;">
+            <h5 style="color: #CBD5E1; margin: 0; font-size: 1.05rem;">📊 Ranked Candidate Probabilities</h5>
+            {certainty_badge}
+        </div>
+        """, unsafe_allow_html=True)
+
+        # Render custom styled candidate cards
         for rank, idx in enumerate(top_indices, 1):
-            c_name, _, c_icon = get_sign_category(idx)
-            val = probs[idx]
+            c_name, c_cat, c_icon = get_sign_category(idx)
+            val = float(probs[idx])
+            val_pct = val * 100
+            
+            if val_pct >= 0.01:
+                pct_display = f"{val_pct:.2f}%"
+            elif val_pct > 0.0001:
+                pct_display = f"{val_pct:.4f}%"
+            else:
+                pct_display = "<0.001%"
+
+            if rank == 1:
+                rank_label = "🥇 #1 PRIMARY LOCK"
+                card_cls = "cand-card-rank-1"
+                fill_grad = "linear-gradient(90deg, #10B981 0%, #3B82F6 100%)"
+                val_color = "#34D399"
+                delta_str = ""
+            elif rank == 2:
+                rank_label = "🥈 #2 RUNNER UP"
+                card_cls = "cand-card-rank-2"
+                fill_grad = "linear-gradient(90deg, #3B82F6 0%, #6366F1 100%)"
+                val_color = "#60A5FA"
+                delta_str = f'<span class="cand-delta-pill">Δ -{(top_prob - val)*100:.2f}%</span>'
+            elif rank == 3:
+                rank_label = "🥉 #3 ALTERNATIVE"
+                card_cls = "cand-card-rank-3"
+                fill_grad = "linear-gradient(90deg, #F59E0B 0%, #EC4899 100%)"
+                val_color = "#FBBF24"
+                delta_str = f'<span class="cand-delta-pill">Δ -{(top_prob - val)*100:.2f}%</span>'
+            else:
+                rank_label = f"#{rank}"
+                card_cls = "cand-card-rank-other"
+                fill_grad = "linear-gradient(90deg, #64748B 0%, #94A3B8 100%)"
+                val_color = "#94A3B8"
+                delta_str = f'<span class="cand-delta-pill">Δ -{(top_prob - val)*100:.2f}%</span>'
+
+            bar_width = max(1.5, min(100.0, val_pct))
+
             st.markdown(f"""
-            <div class="cand-row">
-                <span class="cand-name"><strong>#{rank}</strong> {c_icon} {signNames[idx]}</span>
-                <span class="cand-val">{val*100:.2f}%</span>
+            <div class="cand-card {card_cls}">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.3rem;">
+                    <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+                        <span style="font-size: 0.76rem; font-weight: 700; color: #94A3B8; letter-spacing: 0.05em;">{rank_label}</span>
+                        <span style="font-weight: 600; color: #F1F5F9; font-size: 0.94rem;">{c_icon} {signNames[idx]}</span>
+                        <span style="background: rgba(255,255,255,0.06); color: #94A3B8; font-size: 0.72rem; padding: 0.1rem 0.4rem; border-radius: 4px;">Class {idx}</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        {delta_str}
+                        <span style="font-family: 'JetBrains Mono', monospace; font-weight: 700; color: {val_color}; font-size: 0.98rem;">{pct_display}</span>
+                    </div>
+                </div>
+                <div class="cand-progress-bg">
+                    <div class="cand-progress-fill" style="width: {bar_width}%; background: {fill_grad};"></div>
+                </div>
             </div>
             """, unsafe_allow_html=True)
-            st.progress(float(val))
+
+        # Interactive Distribution Chart Expander
+        with st.expander("📈 View Probability Distribution Chart", expanded=False):
+            chart_signs = [f"#{r} {signNames[i][:20]} (C{i})" for r, i in enumerate(reversed(top_indices), 1)]
+            chart_probs = [float(probs[i]) * 100 for i in reversed(top_indices)]
+            chart_colors = ['#10B981' if i == top_class else '#3B82F6' for i in reversed(top_indices)]
+            
+            fig_cand = go.Figure(go.Bar(
+                x=chart_probs,
+                y=chart_signs,
+                orientation='h',
+                marker=dict(
+                    color=chart_colors,
+                    line=dict(color='rgba(255, 255, 255, 0.2)', width=1)
+                ),
+                text=[f"{p:.2f}%" for p in chart_probs],
+                textposition='auto',
+                textfont=dict(color='#FFFFFF', size=11, family='JetBrains Mono')
+            ))
+            fig_cand.update_layout(
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(0,0,0,0)',
+                margin=dict(l=10, r=20, t=10, b=10),
+                height=160 + (len(top_indices) * 26),
+                xaxis=dict(
+                    title="Softmax Probability (%)",
+                    range=[0, max(100.0, max(chart_probs) * 1.05)],
+                    gridcolor='rgba(255, 255, 255, 0.08)',
+                    tickfont=dict(color='#94A3B8')
+                ),
+                yaxis=dict(
+                    tickfont=dict(color='#E2E8F0', size=11)
+                )
+            )
+            st.plotly_chart(fig_cand, use_container_width=True, config={'displayModeBar': False})
             
         st.markdown("</div>", unsafe_allow_html=True)
         
