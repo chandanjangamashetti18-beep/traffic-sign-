@@ -1112,6 +1112,20 @@ with tab_route:
     active_waypoints = route_definitions[selected_route_name]
     num_wps = len(active_waypoints)
     
+    # Initialize waypoint state if missing or out of bounds
+    if "wp_slider" not in st.session_state:
+        st.session_state["wp_slider"] = 0
+    if st.session_state["wp_slider"] >= num_wps:
+        st.session_state["wp_slider"] = num_wps - 1
+
+    def step_prev():
+        if st.session_state["wp_slider"] > 0:
+            st.session_state["wp_slider"] -= 1
+
+    def step_next():
+        if st.session_state["wp_slider"] < num_wps - 1:
+            st.session_state["wp_slider"] += 1
+
     # Waypoint navigation slider & controls
     wp_col_s, wp_col_b1, wp_col_b2 = st.columns([3, 1, 1])
     with wp_col_s:
@@ -1119,22 +1133,17 @@ with tab_route:
             "🚗 Vehicle Route Progress:",
             min_value=0,
             max_value=num_wps - 1,
-            value=0,
             format="Waypoint %d",
             key="wp_slider"
         )
     with wp_col_b1:
         st.write("")
         st.write("")
-        if st.button("⬅️ Prev", use_container_width=True, disabled=(current_wp_idx == 0)):
-            st.session_state["wp_slider"] = max(0, current_wp_idx - 1)
-            st.rerun()
+        st.button("⬅️ Prev", use_container_width=True, disabled=(current_wp_idx == 0), on_click=step_prev)
     with wp_col_b2:
         st.write("")
         st.write("")
-        if st.button("Next ➡️", use_container_width=True, disabled=(current_wp_idx == num_wps - 1)):
-            st.session_state["wp_slider"] = min(num_wps - 1, current_wp_idx + 1)
-            st.rerun()
+        st.button("Next ➡️", use_container_width=True, disabled=(current_wp_idx == num_wps - 1), on_click=step_next)
             
     active_wp = active_waypoints[current_wp_idx]
     
