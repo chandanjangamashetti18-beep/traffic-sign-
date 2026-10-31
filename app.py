@@ -472,6 +472,43 @@ st.markdown("""
         padding: 1.2rem 1.4rem;
         margin-top: 1rem;
     }
+
+    /* Driver Authorization Portal Card */
+    .login-box {
+        background: rgba(13, 18, 30, 0.90);
+        border: 1px solid rgba(96, 165, 250, 0.35);
+        border-radius: 22px;
+        padding: 2.2rem;
+        margin-bottom: 1.5rem;
+        box-shadow: 0 25px 50px -10px rgba(0, 0, 0, 0.75), 0 0 30px rgba(59, 130, 246, 0.15);
+        backdrop-filter: blur(20px);
+        text-align: center;
+    }
+
+    .login-header-title {
+        font-size: 1.85rem;
+        font-weight: 800;
+        background: linear-gradient(90deg, #60A5FA, #A78BFA, #F472B6);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        margin-bottom: 0.3rem;
+    }
+
+    .login-header-sub {
+        color: #CBD5E1;
+        font-size: 0.95rem;
+    }
+
+    .cred-box {
+        background: rgba(15, 23, 42, 0.88);
+        border: 1px dashed rgba(148, 163, 184, 0.35);
+        border-radius: 14px;
+        padding: 1.1rem 1.3rem;
+        margin-top: 1.5rem;
+        font-size: 0.85rem;
+        color: #E2E8F0;
+        backdrop-filter: blur(14px);
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -581,47 +618,41 @@ def get_sign_category(class_id):
     else:
         return "Mandatory & Priority", "cat-mandatory", "🔷"
 
-# Sidebar
-with st.sidebar:
-    st.markdown("### 🎛️ Vision Control Panel")
-    top_k = st.slider("Top Predictions Display", min_value=1, max_value=5, value=3)
-    enable_voice = st.checkbox("🔊 Enable Voice Audio Alerts", value=True)
-    
-    st.divider()
-    st.markdown("#### 📈 Benchmark Overview")
-    ov_acc = METRICS_DATA.get('accuracy', 0.7188) * 100
-    ov_prec = METRICS_DATA.get('weighted avg', {}).get('precision', 0.8253) * 100
-    ov_rec = METRICS_DATA.get('weighted avg', {}).get('recall', 0.7188) * 100
-    ov_f1 = METRICS_DATA.get('weighted avg', {}).get('f1-score', 0.7297) * 100
-    
-    col_s1, col_s2 = st.columns(2)
-    col_s1.metric("Overall Acc", f"{ov_acc:.1f}%")
-    col_s2.metric("Precision", f"{ov_prec:.1f}%")
-    col_s1.metric("Recall", f"{ov_rec:.1f}%")
-    col_s2.metric("F1-Score", f"{ov_f1:.1f}%")
-    
-    st.divider()
-    st.markdown("#### 🗺️ Navigation Telemetry")
-    st.markdown("""
-    - **GPS Route Simulator**: Bavarian & Stuttgart Tracks
-    - **Live Perception**: Synchronized optical camera
-    - **Speed Control**: Autonomous throttle adaptation
-    - **Audio Advisory**: In-cabin driver warning
-    """)
-    
-    st.divider()
-    st.markdown("#### 🏎️ Vehicle Cockpit Theme")
-    headlights_on = st.toggle("💡 Porsche Headlights", value=True, help="Toggle between luminous xenon headlights ON and headlights OFF.")
-    bg_dimness = st.slider("Porsche Background Dimness", min_value=0.20, max_value=0.96, value=0.80, step=0.02,
-                           help="Adjust to make the black Porsche background more visible or darker for higher text contrast.")
+# Authentication Credentials Database
+VALID_USERS = {
+    "admin": {
+        "password": "porsche2024",
+        "name": "Chief Systems Architect",
+        "role": "Autonomous Driving Systems Engineer",
+        "clearance": "Tier-1 Perception & Telemetry Clearance",
+        "icon": "🏎️"
+    },
+    "driver": {
+        "password": "speedlimit",
+        "name": "ADAS Test Pilot",
+        "role": "Autonomous Vehicle Field Operator",
+        "clearance": "Tier-2 Operation Clearance",
+        "icon": "🚙"
+    }
+}
+
+# Session State Initialization
+if "authenticated" not in st.session_state:
+    st.session_state["authenticated"] = False
+if "user_info" not in st.session_state:
+    st.session_state["user_info"] = None
+if "headlights_on" not in st.session_state:
+    st.session_state["headlights_on"] = True
+if "bg_dimness" not in st.session_state:
+    st.session_state["bg_dimness"] = 0.80
 
 # Dynamic Black Porsche Background CSS
-bg_img_file = 'black_porsche_bg.jpg' if headlights_on else 'black_porsche_original.jpg'
+bg_img_file = 'black_porsche_bg.jpg' if st.session_state["headlights_on"] else 'black_porsche_original.jpg'
 bg_b64 = load_bg_base64(bg_img_file)
 
 if bg_b64:
-    dim_top = f"{bg_dimness:.2f}"
-    dim_bottom = f"{min(1.0, bg_dimness + 0.12):.2f}"
+    dim_top = f"{st.session_state['bg_dimness']:.2f}"
+    dim_bottom = f"{min(1.0, st.session_state['bg_dimness'] + 0.12):.2f}"
     st.markdown(f"""
     <style>
         .stApp {{
@@ -653,6 +684,147 @@ if bg_b64:
         }}
     </style>
     """, unsafe_allow_html=True)
+
+# ----------------- LOGIN / AUTHENTICATION GATE -----------------
+if not st.session_state["authenticated"]:
+    with st.sidebar:
+        st.markdown("### 🔒 ADAS System Gate")
+        st.info("Biometric & driver authorization required to access perception neural networks and vehicle controls.")
+        st.divider()
+        st.markdown("#### 🏎️ Vehicle Cockpit Theme")
+        hl = st.toggle("💡 Porsche Headlights", value=st.session_state["headlights_on"], key="login_hl_toggle", help="Toggle headlights on background car")
+        if hl != st.session_state["headlights_on"]:
+            st.session_state["headlights_on"] = hl
+            st.rerun()
+            
+        dim = st.slider("Porsche Background Dimness", min_value=0.20, max_value=0.96, value=st.session_state["bg_dimness"], step=0.02, key="login_dim_slider",
+                        help="Slide to increase or decrease background visibility of the Porsche GT3 RS.")
+        if dim != st.session_state["bg_dimness"]:
+            st.session_state["bg_dimness"] = dim
+            st.rerun()
+
+    # Center Login Portal on Main Page
+    _, col_login, _ = st.columns([1, 2.2, 1])
+    with col_login:
+        st.markdown("""
+        <div class="login-box">
+            <div class="login-header-title">🛡️ Driver Authorization Gate</div>
+            <div class="login-header-sub">Porsche GT3 RS Autonomous Perception & Mission Cockpit</div>
+            <div style="display: flex; justify-content: center; gap: 0.5rem; margin-top: 0.8rem;">
+                <span class="metric-chip"><span class="chip-dot"></span> System: Armed</span>
+                <span class="metric-chip">🔒 Level 3 Autopilot Locked</span>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        with st.form("driver_auth_form"):
+            st.markdown("##### 🔑 Security Clearance Access")
+            u_in = st.text_input("Driver ID / Username", value="admin", placeholder="e.g. admin or driver")
+            p_in = st.text_input("Security Access Key / Password", type="password", value="porsche2024", placeholder="Enter your access key")
+            remember_session = st.checkbox("Remember driver identity in this session", value=True)
+            
+            submit_auth = st.form_submit_button("🚀 Authenticate & Unlock Cockpit", use_container_width=True)
+            if submit_auth:
+                u_clean = u_in.strip().lower()
+                if u_clean in VALID_USERS and VALID_USERS[u_clean]["password"] == p_in:
+                    st.session_state["authenticated"] = True
+                    st.session_state["user_info"] = {
+                        "username": u_clean,
+                        "name": VALID_USERS[u_clean]["name"],
+                        "role": VALID_USERS[u_clean]["role"],
+                        "clearance": VALID_USERS[u_clean]["clearance"],
+                        "icon": VALID_USERS[u_clean]["icon"]
+                    }
+                    st.toast("✅ Authorization confirmed! Initializing perception pipeline...")
+                    st.rerun()
+                else:
+                    st.error("❌ Access Denied: Invalid Driver ID or Password. Please check demo credentials below.")
+
+        st.markdown("<div style='text-align: center; margin: 0.6rem 0; color: #94A3B8; font-size: 0.85rem;'>— QUICK ACCESS —</div>", unsafe_allow_html=True)
+        if st.button("⚡ Instant 1-Click Guest Login (Evaluator Access)", use_container_width=True):
+            st.session_state["authenticated"] = True
+            st.session_state["user_info"] = {
+                "username": "evaluator",
+                "name": "Guest Evaluator",
+                "role": "Safety & Compliance Inspector",
+                "clearance": "Tier-1 Autonomous Evaluation Clearance",
+                "icon": "⭐"
+            }
+            st.toast("✅ Guest clearance granted! Welcome to the perception dashboard.")
+            st.rerun()
+
+        st.markdown("""
+        <div class="cred-box">
+            <div style="font-weight: 700; margin-bottom: 0.5rem; color: #60A5FA;">📋 Authorized Test Credentials:</div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 0.4rem; padding-bottom: 0.3rem; border-bottom: 1px solid rgba(255,255,255,0.08);">
+                <span>🏎️ <strong>Lead Engineer:</strong> <code>admin</code></span>
+                <span>🔑 <strong>Key:</strong> <code>porsche2024</code></span>
+            </div>
+            <div style="display: flex; justify-content: space-between;">
+                <span>🚙 <strong>Test Pilot:</strong> <code>driver</code></span>
+                <span>🔑 <strong>Key:</strong> <code>speedlimit</code></span>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.stop()
+
+# ----------------- AUTHENTICATED COCKPIT SIDEBAR -----------------
+with st.sidebar:
+    u_info = st.session_state.get("user_info", {"username": "admin", "name": "Chief Architect", "role": "Systems Engineer", "clearance": "Tier-1", "icon": "🏎️"})
+    st.markdown(f"""
+    <div style="background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.35); border-radius: 12px; padding: 0.9rem 1rem; margin-bottom: 0.8rem;">
+        <div style="font-size: 0.72rem; color: #34D399; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em;">● Authorized Session</div>
+        <div style="font-size: 1.15rem; font-weight: 800; color: #FFFFFF; margin: 0.2rem 0;">{u_info['icon']} {u_info['name']}</div>
+        <div style="font-size: 0.82rem; color: #94A3B8;">{u_info['role']}</div>
+        <div style="font-size: 0.76rem; color: #60A5FA; margin-top: 0.3rem;">🛡️ {u_info['clearance']}</div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    if st.button("🚪 Disconnect / Log Out", key="auth_logout_btn", use_container_width=True):
+        st.session_state["authenticated"] = False
+        st.session_state["user_info"] = None
+        st.rerun()
+
+    st.divider()
+    st.markdown("### 🎛️ Vision Control Panel")
+    top_k = st.slider("Top Predictions Display", min_value=1, max_value=5, value=3)
+    enable_voice = st.checkbox("🔊 Enable Voice Audio Alerts", value=True)
+    
+    st.divider()
+    st.markdown("#### 📈 Benchmark Overview")
+    ov_acc = METRICS_DATA.get('accuracy', 0.7188) * 100
+    ov_prec = METRICS_DATA.get('weighted avg', {}).get('precision', 0.8253) * 100
+    ov_rec = METRICS_DATA.get('weighted avg', {}).get('recall', 0.7188) * 100
+    ov_f1 = METRICS_DATA.get('weighted avg', {}).get('f1-score', 0.7297) * 100
+    
+    col_s1, col_s2 = st.columns(2)
+    col_s1.metric("Overall Acc", f"{ov_acc:.1f}%")
+    col_s2.metric("Precision", f"{ov_prec:.1f}%")
+    col_s1.metric("Recall", f"{ov_rec:.1f}%")
+    col_s2.metric("F1-Score", f"{ov_f1:.1f}%")
+    
+    st.divider()
+    st.markdown("#### 🗺️ Navigation Telemetry")
+    st.markdown("""
+    - **GPS Route Simulator**: Bavarian & Stuttgart Tracks
+    - **Live Perception**: Synchronized optical camera
+    - **Speed Control**: Autonomous throttle adaptation
+    - **Audio Advisory**: In-cabin driver warning
+    """)
+    
+    st.divider()
+    st.markdown("#### 🏎️ Vehicle Cockpit Theme")
+    hl = st.toggle("💡 Porsche Headlights", value=st.session_state["headlights_on"], key="auth_hl_toggle", help="Toggle between luminous xenon headlights ON and headlights OFF.")
+    if hl != st.session_state["headlights_on"]:
+        st.session_state["headlights_on"] = hl
+        st.rerun()
+        
+    dim = st.slider("Porsche Background Dimness", min_value=0.20, max_value=0.96, value=st.session_state["bg_dimness"], step=0.02, key="auth_dim_slider",
+                    help="Adjust to make the black Porsche background more visible or darker for higher text contrast.")
+    if dim != st.session_state["bg_dimness"]:
+        st.session_state["bg_dimness"] = dim
+        st.rerun()
 
 # Hero Banner
 st.markdown("""
