@@ -1,6 +1,11 @@
 import streamlit as st
-from PIL import Image
+from PIL import Image, ImageOps
+import importlib
 import classify
+try:
+    importlib.reload(classify)
+except Exception:
+    pass
 import numpy as np
 import os
 import glob
@@ -11,6 +16,94 @@ import plotly.graph_objects as go
 import pydeck as pdk
 import cv2
 import base64
+
+def get_preprocessed_image(image_input, auto_crop=True):
+    """Safe preprocessor that calls classify.preprocess_image with an in-place fallback."""
+    if hasattr(classify, 'preprocess_image'):
+        try:
+            return classify.preprocess_image(image_input, auto_crop=auto_crop)
+        except Exception:
+            pass
+    try:
+        importlib.reload(classify)
+        if hasattr(classify, 'preprocess_image'):
+            return classify.preprocess_image(image_input, auto_crop=auto_crop)
+    except Exception:
+        pass
+
+    # Complete robust fallback pipeline
+    if isinstance(image_input, (str, os.PathLike)):
+        pil_img = Image.open(image_input)
+    elif hasattr(image_input, 'read'):
+        image_input.seek(0)
+        pil_img = Image.open(image_input)
+    elif isinstance(image_input, Image.Image):
+        pil_img = image_input
+    elif isinstance(image_input, np.ndarray):
+        pil_img = Image.fromarray(image_input)
+    else:
+        pil_img = Image.fromarray(np.array(image_input))
+
+    pil_img = ImageOps.exif_transpose(pil_img)
+    if pil_img.mode in ('RGBA', 'LA') or (pil_img.mode == 'P' and 'transparency' in pil_img.info):
+        bg = Image.new('RGB', pil_img.size, (255, 255, 255))
+        if pil_img.mode != 'RGBA':
+            pil_img = pil_img.convert('RGBA')
+        bg.paste(pil_img, mask=pil_img.split()[3])
+        pil_img = bg
+    else:
+        pil_img = pil_img.convert('RGB')
+
+    np_rgb = np.array(pil_img)
+    h, w, _ = np_rgb.shape
+    cropped_pil = pil_img
+    if auto_crop and (w > 64 or h > 64):
+        hsv = cv2.cvtColor(np_rgb, cv2.COLOR_RGB2HSV)
+        mask_r1 = cv2.inRange(hsv, np.array([0, 50, 40]), np.array([12, 255, 255]))
+        mask_r2 = cv2.inRange(hsv, np.array([155, 50, 40]), np.array([180, 255, 255]))
+        mask_b = cv2.inRange(hsv, np.array([95, 50, 40]), np.array([135, 255, 255]))
+        mask_y = cv2.inRange(hsv, np.array([18, 60, 60]), np.array([38, 255, 255]))
+        combined_mask = cv2.bitwise_or(cv2.bitwise_or(mask_r1, mask_r2), cv2.bitwise_or(mask_b, mask_y))
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+        combined_mask = cv2.morphologyEx(combined_mask, cv2.MORPH_CLOSE, kernel)
+        contours, _ = cv2.findContours(combined_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        best_box = None
+        max_score = 0
+        for cnt in contours:
+            area = cv2.contourArea(cnt)
+            if area < (h * w * 0.015):
+                continue
+            x, y, bw, bh = cv2.boundingRect(cnt)
+            aspect = bw / float(bh)
+            if 0.55 <= aspect <= 1.8:
+                cx = x + bw / 2
+                cy = y + bh / 2
+                dist_center = np.hypot(cx - w/2, cy - h/2) / np.hypot(w/2, h/2)
+                score = area * (1.0 - 0.4 * dist_center)
+                if score > max_score:
+                    max_score = score
+                    best_box = (x, y, bw, bh)
+        if best_box is not None:
+            x, y, bw, bh = best_box
+            pad = int(max(bw, bh) * 0.08)
+            x1, y1 = max(0, x - pad), max(0, y - pad)
+            x2, y2 = min(w, x + bw + pad), min(h, y + bh + pad)
+            side = max(x2 - x1, y2 - y1)
+            cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
+            sx1, sy1 = max(0, cx - side // 2), max(0, cy - side // 2)
+            sx2, sy2 = min(w, sx1 + side), min(h, sy1 + side)
+            cropped_pil = pil_img.crop((sx1, sy1, sx2, sy2))
+        else:
+            min_dim = min(h, w)
+            cx, cy = w // 2, h // 2
+            cropped_pil = pil_img.crop((cx - min_dim // 2, cy - min_dim // 2, cx + min_dim // 2, cy + min_dim // 2))
+
+    np_crop = np.array(cropped_pil)
+    resized_32 = cv2.resize(np_crop, (32, 32), interpolation=cv2.INTER_AREA)
+    gray = cv2.cvtColor(resized_32, cv2.COLOR_RGB2GRAY)
+    equalized = cv2.equalizeHist(gray)
+    normalized = equalized.astype(np.float32) / 255.0
+    return normalized, cropped_pil
 
 # Load & Cache Background Image in Base64
 @st.cache_data
@@ -847,7 +940,19 @@ st.markdown("""
 # Helper function to display prediction card with Accuracy, Precision, Recall, Confusion Matrix & Driving Advisory
 def render_results(img_source, auto_crop=True):
     with st.spinner("🧠 Analyzing image with neural perception..."):
-        probs = classify.predict(img_source, auto_crop=auto_crop)[0]
+        try:
+            probs = classify.predict(img_source, auto_crop=auto_crop)[0]
+        except TypeError:
+            try:
+                importlib.reload(classify)
+                probs = classify.predict(img_source, auto_crop=auto_crop)[0]
+            except Exception:
+                norm_arr, _ = get_preprocessed_image(img_source, auto_crop=auto_crop)
+                probs = classify.predict(norm_arr)[0]
+        except Exception:
+            norm_arr, _ = get_preprocessed_image(img_source, auto_crop=auto_crop)
+            probs = classify.predict(norm_arr)[0]
+
         top_indices = np.argsort(probs)[::-1][:top_k]
         top_class = top_indices[0]
         top_conf = probs[top_class] * 100
@@ -1011,7 +1116,7 @@ with tab_upload:
             
             # Show what the model's eyes actually see
             with st.expander("🔬 View Neural Preprocessing (32×32 Equalized Tensor)", expanded=False):
-                arr_32, vis_roi = classify.preprocess_image(processed_img, auto_crop=auto_crop)
+                arr_32, vis_roi = get_preprocessed_image(processed_img, auto_crop=auto_crop)
                 c_prev1, c_prev2 = st.columns(2)
                 c_prev1.image(vis_roi, caption="Cropped ROI", use_container_width=True)
                 c_prev2.image(arr_32, caption="32×32 Equalized Tensor", width=120, clamp=True)
