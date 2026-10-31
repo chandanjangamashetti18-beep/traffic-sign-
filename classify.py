@@ -1,7 +1,8 @@
 import os
 import numpy as np
 import streamlit as st
-from PIL import Image
+from PIL import Image, ImageOps
+import cv2
 
 def _find_model_path():
     candidate_paths = [
@@ -86,20 +87,112 @@ def get_model():
     print('Model Loaded from:', model_path)
     return model
 
-def predict(image_file):
-    model = get_model()
-
-    if isinstance(image_file, (str, os.PathLike)):
-        img = Image.open(image_file).convert('L').resize((32, 32))
-    elif hasattr(image_file, 'read'):
-        image_file.seek(0)
-        img = Image.open(image_file).convert('L').resize((32, 32))
-    elif isinstance(image_file, Image.Image):
-        img = image_file.convert('L').resize((32, 32))
+def preprocess_image(image_input, auto_crop=True):
+    """
+    Complete GTSRB neural preprocessing pipeline:
+    1. EXIF orientation correction (phone cameras)
+    2. RGBA transparency alpha composition (web PNGs)
+    3. Optional Auto-ROI detection & square crop (scene photos)
+    4. Resizing to (32, 32)
+    5. Grayscale conversion + Histogram Equalization (cv2.equalizeHist)
+    6. Normalization to [0, 1]
+    Returns:
+        normalized_32x32: (32, 32) float32 numpy array
+        cropped_visual: PIL Image of the cropped/centered sign
+    """
+    # 1. Load Image into PIL
+    if isinstance(image_input, (str, os.PathLike)):
+        pil_img = Image.open(image_input)
+    elif hasattr(image_input, 'read'):
+        image_input.seek(0)
+        pil_img = Image.open(image_input)
+    elif isinstance(image_input, Image.Image):
+        pil_img = image_input
+    elif isinstance(image_input, np.ndarray):
+        pil_img = Image.fromarray(image_input)
     else:
-        raise ValueError(f"Unsupported image type: {type(image_file)}")
+        raise ValueError(f"Unsupported image type: {type(image_input)}")
 
-    arr = np.array(img, dtype=np.float32) / 255.0
+    # 2. Fix EXIF orientation
+    pil_img = ImageOps.exif_transpose(pil_img)
+
+    # 3. Handle RGBA alpha transparency
+    if pil_img.mode in ('RGBA', 'LA') or (pil_img.mode == 'P' and 'transparency' in pil_img.info):
+        bg = Image.new('RGB', pil_img.size, (255, 255, 255))
+        if pil_img.mode != 'RGBA':
+            pil_img = pil_img.convert('RGBA')
+        bg.paste(pil_img, mask=pil_img.split()[3])
+        pil_img = bg
+    else:
+        pil_img = pil_img.convert('RGB')
+
+    np_rgb = np.array(pil_img)
+    h, w, _ = np_rgb.shape
+
+    # 4. Auto-Crop ROI for images with large margins / scenes
+    cropped_pil = pil_img
+    if auto_crop and (w > 64 or h > 64):
+        hsv = cv2.cvtColor(np_rgb, cv2.COLOR_RGB2HSV)
+        # Red signs (Stop, Speed limit, No Entry, Warnings, Prohibitory)
+        mask_r1 = cv2.inRange(hsv, np.array([0, 50, 40]), np.array([12, 255, 255]))
+        mask_r2 = cv2.inRange(hsv, np.array([155, 50, 40]), np.array([180, 255, 255]))
+        # Blue signs (Mandatory, Roundabout, Turn)
+        mask_b = cv2.inRange(hsv, np.array([95, 50, 40]), np.array([135, 255, 255]))
+        # Yellow signs (Priority road)
+        mask_y = cv2.inRange(hsv, np.array([18, 60, 60]), np.array([38, 255, 255]))
+        
+        combined_mask = cv2.bitwise_or(cv2.bitwise_or(mask_r1, mask_r2), cv2.bitwise_or(mask_b, mask_y))
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+        combined_mask = cv2.morphologyEx(combined_mask, cv2.MORPH_CLOSE, kernel)
+        contours, _ = cv2.findContours(combined_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        
+        best_box = None
+        max_score = 0
+        for cnt in contours:
+            area = cv2.contourArea(cnt)
+            if area < (h * w * 0.015):
+                continue
+            x, y, bw, bh = cv2.boundingRect(cnt)
+            aspect = bw / float(bh)
+            if 0.55 <= aspect <= 1.8:
+                cx = x + bw / 2
+                cy = y + bh / 2
+                dist_center = np.hypot(cx - w/2, cy - h/2) / np.hypot(w/2, h/2)
+                score = area * (1.0 - 0.4 * dist_center)
+                if score > max_score:
+                    max_score = score
+                    best_box = (x, y, bw, bh)
+
+        if best_box is not None:
+            x, y, bw, bh = best_box
+            pad = int(max(bw, bh) * 0.08)
+            x1, y1 = max(0, x - pad), max(0, y - pad)
+            x2, y2 = min(w, x + bw + pad), min(h, y + bh + pad)
+            side = max(x2 - x1, y2 - y1)
+            cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
+            sx1, sy1 = max(0, cx - side // 2), max(0, cy - side // 2)
+            sx2, sy2 = min(w, sx1 + side), min(h, sy1 + side)
+            cropped_pil = pil_img.crop((sx1, sy1, sx2, sy2))
+        else:
+            # Aspect-ratio preserving square center-crop
+            min_dim = min(h, w)
+            cx, cy = w // 2, h // 2
+            cropped_pil = pil_img.crop((cx - min_dim // 2, cy - min_dim // 2, cx + min_dim // 2, cy + min_dim // 2))
+
+    # 5. Resize to 32x32
+    np_crop = np.array(cropped_pil)
+    resized_32 = cv2.resize(np_crop, (32, 32), interpolation=cv2.INTER_AREA)
+
+    # 6. Grayscale + Histogram Equalization (GTSRB training requirement)
+    gray = cv2.cvtColor(resized_32, cv2.COLOR_RGB2GRAY)
+    equalized = cv2.equalizeHist(gray)
+    normalized = equalized.astype(np.float32) / 255.0
+
+    return normalized, cropped_pil
+
+def predict(image_file, auto_crop=True):
+    model = get_model()
+    arr, _ = preprocess_image(image_file, auto_crop=auto_crop)
 
     if HAS_TF:
         inp = np.reshape(arr, [1, 32, 32, 1])
@@ -111,24 +204,10 @@ def predict(image_file):
             classes = model(inp).cpu().numpy()
         return classes
 
-def generate_gradcam(image_file):
+def generate_gradcam(image_file, auto_crop=True):
     """Generates Grad-CAM visual explanation overlay and heatmap for input image."""
     model = get_model()
-    import cv2
-    import torch
-
-    if isinstance(image_file, (str, os.PathLike)):
-        orig_img = Image.open(image_file).convert('RGB')
-    elif hasattr(image_file, 'read'):
-        image_file.seek(0)
-        orig_img = Image.open(image_file).convert('RGB')
-    elif isinstance(image_file, Image.Image):
-        orig_img = image_file.convert('RGB')
-    else:
-        raise ValueError("Unsupported image type")
-
-    gray_32 = orig_img.convert('L').resize((32, 32))
-    arr = np.array(gray_32, dtype=np.float32) / 255.0
+    arr, orig_img = preprocess_image(image_file, auto_crop=auto_crop)
 
     inp = torch.from_numpy(arr).unsqueeze(0).unsqueeze(0)
     inp.requires_grad = True

@@ -845,9 +845,9 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Helper function to display prediction card with Accuracy, Precision, Recall, Confusion Matrix & Driving Advisory
-def render_results(img_source):
+def render_results(img_source, auto_crop=True):
     with st.spinner("🧠 Analyzing image with neural perception..."):
-        probs = classify.predict(img_source)[0]
+        probs = classify.predict(img_source, auto_crop=auto_crop)[0]
         top_indices = np.argsort(probs)[::-1][:top_k]
         top_class = top_indices[0]
         top_conf = probs[top_class] * 100
@@ -984,19 +984,41 @@ with tab_upload:
     col1, col2 = st.columns([1, 1], gap="large")
     with col1:
         st.markdown("#### 📤 Select Sign Image")
-        st.write("Upload a clear photo of a road sign (.jpg, .jpeg, .png).")
+        st.write("Upload a photo of a road sign (.jpg, .jpeg, .png).")
         uploaded_file = st.file_uploader("Upload Image File", type=["jpg", "png", "jpeg"], label_visibility="collapsed")
         
         if uploaded_file is not None:
-            img = Image.open(uploaded_file)
-            st.image(img, caption="Uploaded Sign", use_container_width=True)
-            classify_btn = st.button("🚀 Analyze Traffic Sign", type="primary", use_container_width=True, key="btn_up")
+            from PIL import ImageOps
+            raw_img = Image.open(uploaded_file)
+            raw_img = ImageOps.exif_transpose(raw_img)
+            
+            # Interactive Neural Vision Tuning
+            st.markdown("##### 🎯 Neural Vision Tuning")
+            col_opt1, col_opt2 = st.columns([1, 1])
+            with col_opt1:
+                auto_crop = st.toggle("🎯 Auto-Center Sign ROI", value=True, help="Automatically isolates the traffic sign and crops out background distractions.")
+            with col_opt2:
+                zoom = st.slider("🔍 Zoom / Crop", min_value=1.0, max_value=3.0, value=1.0, step=0.1, help="Zoom into the sign if it is far away or surrounded by background.")
+            
+            processed_img = raw_img
+            if zoom > 1.0:
+                zw, zh = processed_img.size
+                cw, ch = int(zw / zoom), int(zh / zoom)
+                zcx, zcy = zw // 2, zh // 2
+                processed_img = processed_img.crop((zcx - cw // 2, zcy - ch // 2, zcx + cw // 2, zcy + ch // 2))
+                
+            st.image(processed_img, caption="Source Image Preview", use_container_width=True)
+            
+            # Show what the model's eyes actually see
+            with st.expander("🔬 View Neural Preprocessing (32×32 Equalized Tensor)", expanded=False):
+                arr_32, vis_roi = classify.preprocess_image(processed_img, auto_crop=auto_crop)
+                c_prev1, c_prev2 = st.columns(2)
+                c_prev1.image(vis_roi, caption="Cropped ROI", use_container_width=True)
+                c_prev2.image(arr_32, caption="32×32 Equalized Tensor", width=120, clamp=True)
             
     with col2:
-        if uploaded_file is not None and ('classify_btn' in locals() and classify_btn):
-            render_results(uploaded_file)
-        elif uploaded_file is not None:
-            st.info("👈 Click **Analyze Traffic Sign** to inspect perception, advisory, and metrics.")
+        if uploaded_file is not None:
+            render_results(processed_img, auto_crop=auto_crop)
         else:
             st.markdown("""
             <div class="glass-card" style="text-align: center; padding: 3rem 1rem;">
@@ -1015,7 +1037,7 @@ with tab_camera:
         
     with col_cam2:
         if cam_file is not None:
-            render_results(cam_file)
+            render_results(cam_file, auto_crop=True)
         else:
             st.markdown("""
             <div class="glass-card" style="text-align: center; padding: 3rem 1rem;">
